@@ -1,3 +1,4 @@
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 
@@ -7,18 +8,77 @@ public class Dstore {
     final int CPORT;
     final int TIMEOUT;
     final String FILE_FOLDER;
-    final ServerSocket socket;
+    final Socket CSOCKET;
+    final ServerSocket DSOCKET;
+    PrintWriter controllerMessages;
+    final String FOLDER_NAME;
 
     public Dstore(int port, int cport, int timeout, String file_folder) throws Exception {
         PORT = port;
         CPORT = cport;
         TIMEOUT = timeout;
         FILE_FOLDER = file_folder;
-        socket = new ServerSocket(CPORT);
-        for(;;){
-            try{Socket controllerSocket = socket.accept(); }
-            catch(Exception e){System.out.println("error "+e);}
+        CSOCKET = new Socket("localhost" ,cport);
+        DSOCKET = new ServerSocket(port);
+        FOLDER_NAME = file_folder;
+        controllerMessages = new PrintWriter(CSOCKET.getOutputStream());
+        controllerMessages.println("JOIN " + port); controllerMessages.flush();
+        File theDir = new File(file_folder);
+        if (!theDir.exists()){
+            theDir.mkdirs();
         }
+        run();
+    }
+
+    private void run() throws IOException {
+        while (true){
+            System.out.println("Waiting for connections...");
+            Socket client = DSOCKET.accept();
+            System.out.println("Connection established");
+            new Thread( () -> {
+                try {
+                    BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
+                    String line;
+                    while ((line = in.readLine()) != null){
+                        String[] lineSplit = line.split(" ");
+                        switch (lineSplit[0]){
+                            case "STORE":
+                                store(lineSplit, client);
+                                break;
+                            default:
+                                System.out.println("Unrecognised command");
+                        }
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }).start();
+        }
+    }
+
+
+    private void store(String[] lineSplit, Socket client) throws IOException {
+        String line;
+        String filename = FILE_FOLDER + "/" + lineSplit[1];
+        int filesize = Integer.parseInt(lineSplit[2]);
+
+        PrintWriter out = new PrintWriter(client.getOutputStream());
+        InputStream fileIn = client.getInputStream();
+        OutputStream fileOut = new FileOutputStream(new File(filename));
+
+        out.println("ACK");
+        byte[] bytes = new byte[8*1024]; // could be filesize
+        int count;
+        while ((count = fileIn.read(bytes)) > 0) {
+            fileOut.write(bytes, 0, count);
+        }
+        fileOut.close();
+        controllerMessages.println("STORE_ACK "+ lineSplit[1]);
+        controllerMessages.flush();
+    }
+
+    public void storeFile(String fileContent){
+        System.out.println(fileContent);
     }
 
     //java Controller cport R timeout rebalance_period
@@ -33,7 +93,7 @@ public class Dstore {
         catch (NumberFormatException e) { System.out.println("Wrong value of timeout!"); return;}
 
         try {
-            Dstore dstore = new Dstore(port, cport, timeout, file_folder);
+            new Dstore(port, cport, timeout, file_folder);
 
         } catch (Exception e) {
             e.printStackTrace();
