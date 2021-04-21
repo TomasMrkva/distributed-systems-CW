@@ -3,6 +3,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * Controller -> Dstore connection
@@ -31,11 +32,13 @@ public class ControllerDstoreSession implements Runnable {
     public void run(){
         String line;
         try{
-            System.out.println("Controller -> Dstore connection established for Dstore: " + dstorePort );
+            System.out.println("Controller -> Dstore connection established for Dstore: " + dstorePort);
             while((line = in.readLine()) != null) {
                 String[] lineSplit = line.split(" ");
                 if(lineSplit[0].equals("STORE_ACK")){
+                    String filename = lineSplit[1];
                     System.out.println("STORE_ACK" + "received");
+                    controller.addDstoreAck(filename);
                 }
                 else {
                     System.out.println("NOT MATCHED");

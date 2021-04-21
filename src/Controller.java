@@ -3,9 +3,9 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 
 public class Controller {
 
@@ -14,7 +14,9 @@ public class Controller {
     final public int TIMEOUT;
     final public int REBALANCE_PERIOD;
     final private ServerSocket ss;
-    public List<ControllerDstoreSession> dstoreSessions;
+    public ConcurrentHashMap<Integer,ControllerDstoreSession> dstoreSessions;
+    //public ConcurrentHashMap<String,Set<Integer>> dstoreAcks;
+    public ConcurrentHashMap<String, CountDownLatch> waitingAcks;
 
     public Controller(int r, int cport, int timeout, int rebalance_period) throws Exception {
         R = r;
@@ -22,7 +24,8 @@ public class Controller {
         TIMEOUT = timeout;
         REBALANCE_PERIOD = rebalance_period;
         ss = new ServerSocket(cport);
-        dstoreSessions = Collections.synchronizedList(new ArrayList<>());
+        dstoreSessions = new ConcurrentHashMap<>();
+        //dstoreAcks = new ConcurrentHashMap<>();
         run();
     }
 
@@ -40,7 +43,7 @@ public class Controller {
                         if (lineSplit[0].equals("JOIN")) {
                             int dstorePort = Integer.parseInt(lineSplit[1]);
                             ControllerDstoreSession cd = new ControllerDstoreSession(dstorePort,client,this);
-                            dstoreSessions.add(cd);
+                            dstoreSessions.put(dstorePort,cd);
                             //System.out.println("JOINED " + dstoreSessions.size());
                             new Thread(cd).start();
                         } else {
@@ -56,8 +59,40 @@ public class Controller {
     }
 
     public void dstoreClosedNotify(int dstorePort) {
-        dstoreSessions.removeIf(c -> c.getDstorePort() == dstorePort);
+        dstoreSessions.remove(dstorePort);
         System.out.println("Dstores:" + dstoreSessions.size());
+    }
+
+    public void addAcksLatch(String filename, CountDownLatch latch){
+        waitingAcks.put(filename, latch);
+    }
+
+//    public boolean addDstoreAck(String filename, int dstorePort){
+//        Iterator<Map.Entry<String, Set<Integer>>> it = dstoreAcks.entrySet().iterator();
+//        while(it.hasNext()){
+//            Map.Entry<String, Set<Integer>> pair = it.next();
+//            if(pair.getKey().equals(filename)){
+//                pair.getValue().add(dstorePort);
+//                if(pair.getValue().size() == R){
+//                   it.remove();
+//                   return true;
+//                }
+//                return false;
+//            }
+//        }
+//        return false;
+//    }
+
+    public void addDstoreAck(String filename) {
+        waitingAcks.compute(filename,(key,value) -> {
+           if(value.getCount() == 1) {
+               value.countDown();
+               return null;
+           } else {
+               value.countDown();
+               return value;
+           }
+        });
     }
 
     //java Controller cport R timeout rebalance_period
