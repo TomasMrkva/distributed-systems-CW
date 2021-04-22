@@ -1,27 +1,24 @@
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
 import java.net.Socket;
-import java.util.concurrent.CountDownLatch;
 
 /**
  * Controller -> Dstore connection
  */
-public class ControllerDstoreSession implements Runnable {
+public class ControllerDstoreSession extends Session {
 
     private int dstorePort;
-    private BufferedReader in;
-    private PrintWriter out;
+//    private BufferedReader in;
+//    private PrintWriter out;
     private Socket connection;
     private Controller controller;
 
-    public ControllerDstoreSession(int dstorePort, Socket connection, Controller controller) throws IOException {
+    public ControllerDstoreSession(int dstorePort, Socket connection, Controller controller, String message) throws IOException {
+        super(connection,message,"Dstore");
         this.dstorePort = dstorePort;
         this.connection = connection;
         this.controller = controller;
-        in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-        out = new PrintWriter(connection.getOutputStream());
+//        in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+//        out = new PrintWriter(connection.getOutputStream());
     }
 
     public int getDstorePort(){
@@ -29,29 +26,23 @@ public class ControllerDstoreSession implements Runnable {
     }
 
     @Override
-    public void run(){
-        String line;
-        try{
-            System.out.println("Controller -> Dstore connection established for Dstore: " + dstorePort);
-            while((line = in.readLine()) != null) {
-                String[] lineSplit = line.split(" ");
-                if(lineSplit[0].equals("STORE_ACK")){
-                    String filename = lineSplit[1];
-                    System.out.println("STORE_ACK" + "received");
-                    controller.addDstoreAck(filename);
-                }
-                else {
-                    System.out.println("NOT MATCHED");
-                }
-            }
-        } catch (Exception e){}
-        finally {
-            try {
-                controller.dstoreClosedNotify(dstorePort);
-                connection.close();
-            }
-            catch (IOException e) { e.printStackTrace(); }
+    public void singleOperation(String message) throws InterruptedException {
+        String[] messageSplit = message.split(" ");
+        switch (messageSplit[0]){
+            case "STORE_ACK":
+                String filename = messageSplit[1];
+                System.out.println("STORE_ACK" + "received");
+                controller.addDstoreAck(filename);
+                break;
+            default:
+                System.out.println("NOT MATCHED " + messageSplit[0]);
         }
-
     }
+
+    @Override
+    public void cleanup() {
+        controller.dstoreClosedNotify(dstorePort);
+        super.cleanup();
+    }
+
 }

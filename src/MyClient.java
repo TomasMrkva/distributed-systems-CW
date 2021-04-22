@@ -1,7 +1,4 @@
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.Socket;
 
 public class MyClient {
@@ -13,8 +10,9 @@ public class MyClient {
     public MyClient(int cport, int timeout) throws Exception {
         CPORT = cport;
         TIMEOUT = timeout;
+        System.out.println("HEMLO");
         socket = new Socket("localhost", CPORT);
-        //run();
+        run();
     }
 
     private void run() throws Exception {
@@ -24,6 +22,7 @@ public class MyClient {
         for (;;){
             String input = System.console().readLine();
             out.println(input); out.flush();
+            System.out.println("input" + input + " flushed");
             String line = in.readLine();
             System.out.println(line);
 //            String[] lineArray = input.split(" ");
@@ -52,12 +51,21 @@ public class MyClient {
         catch (NumberFormatException e) { System.out.println("Wrong value of cport!"); return;}
         try { timeout = Integer.parseInt(args[1]); }
         catch (NumberFormatException e) { System.out.println("Wrong value of timeout!"); return;}
+//
+//        try {
+//            MyClient client = new MyClient(cport, timeout);
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//            return;
+//        }
+        Client client = new Client(cport, timeout,Logger.LoggingType.ON_FILE_AND_TERMINAL);
+        try { client.connect(); } catch(IOException e) { e.printStackTrace(); return; }
+        try { client.store(new File("Clipboard01.pdf")); } catch(IOException e) { e.printStackTrace(); }
 
-        try {
-            MyClient client = new MyClient(cport, timeout);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return;
-        }
+        try { client.store(new File("Clipboard01.pdf")); } catch(IOException e) { e.printStackTrace(); }
+
+        try { client.store(new File("Clipboard01.jpg")); } catch(IOException e) { e.printStackTrace(); }
+
+
     }
 }

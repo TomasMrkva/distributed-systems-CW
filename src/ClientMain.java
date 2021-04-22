@@ -42,27 +42,27 @@ public class ClientMain {
 		
 			try { client.connect(); } catch(IOException e) { e.printStackTrace(); return; }
 			
-			try { list(client); } catch(IOException e) { e.printStackTrace(); }
+//			try { list(client); } catch(IOException e) { e.printStackTrace(); }
 			
-			try { client.store(new File("Clipboard01.pdf")); } catch(IOException e) { e.printStackTrace(); }
+			try { client.store(new File("ClientMain.java")); } catch(IOException e) { e.printStackTrace(); }
 			
-			try { client.store(new File("Clipboard01.pdf")); } catch(IOException e) { e.printStackTrace(); }
-
-			try { client.store(new File("Clipboard01.jpg")); } catch(IOException e) { e.printStackTrace(); }
-			
-			String list[] = null;
-			try { list = list(client); } catch(IOException e) { e.printStackTrace(); }
-			
-			if (list != null)
-				for (String filename : list)
-					try { client.load(filename, downloadFolder); } catch(IOException e) { e.printStackTrace(); }
-			
-			if (list != null)
-				for (String filename : list)
-					try { client.remove(filename); } catch(IOException e) { e.printStackTrace(); }
-			
-			try { list(client); } catch(IOException e) { e.printStackTrace(); }
-			
+//			try { client.store(new File("Clipboard01.pdf")); } catch(IOException e) { e.printStackTrace(); }
+//
+//			try { client.store(new File("Clipboard01.jpg")); } catch(IOException e) { e.printStackTrace(); }
+//
+//			String list[] = null;
+//			try { list = list(client); } catch(IOException e) { e.printStackTrace(); }
+//
+//			if (list != null)
+//				for (String filename : list)
+//					try { client.load(filename, downloadFolder); } catch(IOException e) { e.printStackTrace(); }
+//
+//			if (list != null)
+//				for (String filename : list)
+//					try { client.remove(filename); } catch(IOException e) { e.printStackTrace(); }
+//
+//			try { list(client); } catch(IOException e) { e.printStackTrace(); }
+//
 		} finally {
 			if (client != null)
 				try { client.disconnect(); } catch(Exception e) { e.printStackTrace(); }

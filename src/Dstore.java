@@ -1,6 +1,8 @@
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class Dstore {
 
@@ -10,8 +12,9 @@ public class Dstore {
     final String FILE_FOLDER;
     final Socket CSOCKET;
     final ServerSocket DSOCKET;
-    PrintWriter controllerMessages;
+    final PrintWriter controllerMessages;
     final String FOLDER_NAME;
+    final CopyOnWriteArrayList<File> fileList;
 
     public Dstore(int port, int cport, int timeout, String file_folder) throws Exception {
         PORT = port;
@@ -23,16 +26,23 @@ public class Dstore {
         FOLDER_NAME = file_folder;
         controllerMessages = new PrintWriter(CSOCKET.getOutputStream());
         controllerMessages.println("JOIN " + port); controllerMessages.flush();
-        File theDir = new File(file_folder);
-        if (!theDir.exists()){
-            theDir.mkdirs();
-        }
+        fileList = new CopyOnWriteArrayList<>();
+        setup();
         run();
+    }
+
+    private void setup() throws IOException {
+        File dir = new File(FOLDER_NAME);
+        if (!dir.exists()){
+            System.out.println("made a dir");
+            dir.mkdirs();
+        } else {
+            fileList.removeAll(Arrays.asList(dir.listFiles()));
+        }
     }
 
     private void run() throws IOException {
         while (true){
-            System.out.println("Waiting for connections...");
             Socket client = DSOCKET.accept();
             System.out.println("Connection established");
             new Thread( () -> {
@@ -56,30 +66,37 @@ public class Dstore {
         }
     }
 
-
     private void store(String[] lineSplit, Socket client) throws IOException {
-        String line;
+//        System.out.println("HEMLO");
         String filename = FILE_FOLDER + "/" + lineSplit[1];
         int filesize = Integer.parseInt(lineSplit[2]);
 
         PrintWriter out = new PrintWriter(client.getOutputStream());
         InputStream fileIn = client.getInputStream();
-        OutputStream fileOut = new FileOutputStream(new File(filename));
-
-        out.println("ACK");
-        byte[] bytes = new byte[8*1024]; // could be filesize
-        int count;
-        while ((count = fileIn.read(bytes)) > 0) {
-            fileOut.write(bytes, 0, count);
+        File file = new File(filename);
+//        if(!file.exists()){ }
+        boolean exists = false;
+        for (File f : fileList){
+            if (f.getName().equals(lineSplit[1])){
+                exists = true;
+                break;
+            }
         }
-        fileOut.close();
-        controllerMessages.println("STORE_ACK "+ lineSplit[1]);
+        if(!exists){
+            out.println("ACK"); out.flush();
+            OutputStream fileOut = new FileOutputStream(file);
+            byte[] bytes = fileIn.readNBytes(filesize);
+            fileOut.write(bytes);
+            fileOut.close();
+            fileList.add(file);
+        }
+
+        System.out.println(fileList.size());
+
+        controllerMessages.println("STORE_ACK " + lineSplit[1]);
         controllerMessages.flush();
     }
 
-    public void storeFile(String fileContent){
-        System.out.println(fileContent);
-    }
 
     //java Controller cport R timeout rebalance_period
     public static void main(String[] args) {

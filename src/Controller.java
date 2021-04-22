@@ -17,39 +17,40 @@ public class Controller {
     public ConcurrentHashMap<Integer,ControllerDstoreSession> dstoreSessions;
     //public ConcurrentHashMap<String,Set<Integer>> dstoreAcks;
     public ConcurrentHashMap<String, CountDownLatch> waitingAcks;
+//    public ConcurrentHashMap<Integer, ArrayList<String>> dstoresFiles;
 
-    public Controller(int r, int cport, int timeout, int rebalance_period) throws Exception {
-        R = r;
+    public Controller(int cport, int r, int timeout, int rebalance_period) throws Exception {
         CPORT = cport;
+        R = r;
         TIMEOUT = timeout;
         REBALANCE_PERIOD = rebalance_period;
         ss = new ServerSocket(cport);
         dstoreSessions = new ConcurrentHashMap<>();
+        waitingAcks = new ConcurrentHashMap<>();
         //dstoreAcks = new ConcurrentHashMap<>();
+//        dstoresFiles = new ConcurrentHashMap<>();
         run();
     }
 
     private void run() throws IOException {
         while (true){
-            System.out.println("Waiting for connections...");
             Socket client = ss.accept();
-            System.out.println("Connection established");
+            System.out.println("Controller connection established");
             new Thread( () -> {
                 try {
                     BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
-                    String line;
-                    while ((line = in.readLine()) != null){
-                        String[] lineSplit = line.split(" ");
-                        if (lineSplit[0].equals("JOIN")) {
-                            int dstorePort = Integer.parseInt(lineSplit[1]);
-                            ControllerDstoreSession cd = new ControllerDstoreSession(dstorePort,client,this);
-                            dstoreSessions.put(dstorePort,cd);
-                            //System.out.println("JOINED " + dstoreSessions.size());
-                            new Thread(cd).start();
-                        } else {
-                            ControllerClientSession cc = new ControllerClientSession(client, this);
-                            new Thread(cc).start();
-                        }
+                    String line = in.readLine();
+                    String[] lineSplit = line.split(" ");
+                    if (lineSplit[0].equals("JOIN")) {
+                        int dstorePort = Integer.parseInt(lineSplit[1]);
+                        ControllerDstoreSession cd = new ControllerDstoreSession(dstorePort,client,this, line);
+                        dstoreSessions.put(dstorePort,cd);
+                        System.out.println("Dstores:" + dstoreSessions.size());
+                        new Thread(cd).start();
+                    } else {
+                        System.out.println(line);
+                        ControllerClientSession cc = new ControllerClientSession(client, this, line);
+                        new Thread(cc).start();
                     }
                 } catch (IOException e) {
                     e.printStackTrace();
@@ -66,22 +67,6 @@ public class Controller {
     public void addAcksLatch(String filename, CountDownLatch latch){
         waitingAcks.put(filename, latch);
     }
-
-//    public boolean addDstoreAck(String filename, int dstorePort){
-//        Iterator<Map.Entry<String, Set<Integer>>> it = dstoreAcks.entrySet().iterator();
-//        while(it.hasNext()){
-//            Map.Entry<String, Set<Integer>> pair = it.next();
-//            if(pair.getKey().equals(filename)){
-//                pair.getValue().add(dstorePort);
-//                if(pair.getValue().size() == R){
-//                   it.remove();
-//                   return true;
-//                }
-//                return false;
-//            }
-//        }
-//        return false;
-//    }
 
     public void addDstoreAck(String filename) {
         waitingAcks.compute(filename,(key,value) -> {
