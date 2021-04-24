@@ -36,7 +36,7 @@ public class ControllerDstoreSession extends Session {
         switch (messageSplit[0]){
             case "STORE_ACK":
                 String filename = messageSplit[1];
-                System.out.println("STORE_ACK" + "received from port: " + dstorePort);
+                System.out.println("STORE_ACK " + "received from port: " + dstorePort);
                 controller.addDstoreAck(filename, this);
                 break;
             default:
@@ -55,4 +55,10 @@ public class ControllerDstoreSession extends Session {
         super.cleanup();
     }
 
+    @Override
+    public String toString() {
+        return "ControllerDstoreSession{" +
+                "dstorePort=" + dstorePort +
+                '}';
+    }
 }

@@ -25,9 +25,11 @@ public class ControllerClientSession extends Session {
         String[] messageSplit = message.split(" ");
         switch (messageSplit[0]){
             case "STORE":
-                System.out.println("STORE:" + Arrays.toString(messageSplit));
-                controller.controllerStoreOperation(messageSplit[1],out);
+//                System.out.println("STORE:" + Arrays.toString(messageSplit));
+                controller.controllerStoreOperation(messageSplit[1],Integer.parseInt(messageSplit[2]),out);
                 break;
+            case "LOAD":
+                controller.controllerLoadOperation(messageSplit[1],out);
             default:
                 System.out.println("NOT MATCHED");
         }

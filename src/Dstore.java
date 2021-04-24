@@ -1,4 +1,5 @@
 import java.io.*;
+import java.io.File;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
@@ -44,7 +45,7 @@ public class Dstore {
     private void run() throws IOException {
         while (true){
             Socket client = DSOCKET.accept();
-            System.out.println("Connection established");
+            System.out.println("Dstore connection established by: " + client.getRemoteSocketAddress());
             new Thread( () -> {
                 try {
                     BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
