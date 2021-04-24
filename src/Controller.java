@@ -1,11 +1,16 @@
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 
 public class Controller {
 
@@ -14,10 +19,9 @@ public class Controller {
     final public int TIMEOUT;
     final public int REBALANCE_PERIOD;
     final private ServerSocket ss;
+    final public Index index;
     public ConcurrentHashMap<Integer,ControllerDstoreSession> dstoreSessions;
-    //public ConcurrentHashMap<String,Set<Integer>> dstoreAcks;
     public ConcurrentHashMap<String, CountDownLatch> waitingAcks;
-//    public ConcurrentHashMap<Integer, ArrayList<String>> dstoresFiles;
 
     public Controller(int cport, int r, int timeout, int rebalance_period) throws Exception {
         CPORT = cport;
@@ -27,8 +31,7 @@ public class Controller {
         ss = new ServerSocket(cport);
         dstoreSessions = new ConcurrentHashMap<>();
         waitingAcks = new ConcurrentHashMap<>();
-        //dstoreAcks = new ConcurrentHashMap<>();
-//        dstoresFiles = new ConcurrentHashMap<>();
+        index = new Index();
         run();
     }
 
@@ -59,17 +62,15 @@ public class Controller {
         }
     }
 
-    public void dstoreClosedNotify(int dstorePort) {
+    public synchronized void dstoreClosedNotify(int dstorePort) {
         dstoreSessions.remove(dstorePort);
-        System.out.println("Dstores:" + dstoreSessions.size());
+        index.removeDstore(dstorePort);
+        System.out.println("Dstores: " + dstoreSessions.size());
     }
 
-    public void addAcksLatch(String filename, CountDownLatch latch){
-        waitingAcks.put(filename, latch);
-    }
-
-    public void addDstoreAck(String filename) {
+    public void addDstoreAck(String filename, ControllerDstoreSession d) {
         waitingAcks.compute(filename,(key,value) -> {
+            index.addDstore(filename, d);
            if(value.getCount() == 1) {
                value.countDown();
                return null;
@@ -78,6 +79,42 @@ public class Controller {
                return value;
            }
         });
+    }
+
+    //----Operations----
+
+    public void controllerStoreOperation(String filename, PrintWriter out) throws InterruptedException {
+        ControllerDstoreSession[] dstores = dstoreSessions.values().toArray(new ControllerDstoreSession[0]);
+        if(dstores.length < R) {
+            out.println("ERROR_NOT_ENOUGH_DSTORES"); out.flush();
+        } else if (!index.setStoreInProgress(filename)) {
+            out.println("ERROR_FILE_ALREADY_EXISTS"); out.flush();
+        } else {
+            StringBuilder output = new StringBuilder("STORE_TO");
+            List<Integer> list = new ArrayList<>();
+            IntStream.range(0, dstores.length).forEach(list::add);
+            Collections.shuffle(list);
+
+            for(int i = 0; i < R; i++)
+                output.append(" ").append(dstores[list.get(i)].getDstorePort());
+            System.out.println("Selected dstores: " + output);
+            CountDownLatch latch = new CountDownLatch(R);
+            waitingAcks.put(filename, latch);
+            out.println(output);
+            out.flush();
+
+            if(!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)){
+                //TODO: log an error here -> timeout reached
+                System.out.println("timeout reached");
+                index.setStoreComplete(filename);
+                waitingAcks.remove(filename);
+            } else {
+                index.setStoreComplete(filename);
+                out.println("STORE_COMPLETE");
+                waitingAcks.remove(filename);
+                out.flush();
+            }
+        }
     }
 
     //java Controller cport R timeout rebalance_period

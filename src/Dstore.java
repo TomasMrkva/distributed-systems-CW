@@ -67,14 +67,13 @@ public class Dstore {
     }
 
     private void store(String[] lineSplit, Socket client) throws IOException {
-//        System.out.println("HEMLO");
         String filename = FILE_FOLDER + "/" + lineSplit[1];
         int filesize = Integer.parseInt(lineSplit[2]);
 
         PrintWriter out = new PrintWriter(client.getOutputStream());
         InputStream fileIn = client.getInputStream();
         File file = new File(filename);
-//        if(!file.exists()){ }
+
         boolean exists = false;
         for (File f : fileList){
             if (f.getName().equals(lineSplit[1])){
@@ -89,10 +88,10 @@ public class Dstore {
             fileOut.write(bytes);
             fileOut.close();
             fileList.add(file);
+        } else {
+            System.out.println("File already exists");
         }
-
         System.out.println(fileList.size());
-
         controllerMessages.println("STORE_ACK " + lineSplit[1]);
         controllerMessages.flush();
     }
