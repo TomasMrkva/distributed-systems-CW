@@ -4,14 +4,10 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.IntStream;
 
 public class Controller {
 
@@ -63,11 +59,15 @@ public class Controller {
         }
     }
 
-    public synchronized void dstoreClosedNotify(int dstorePort) {
-        dstoreSessions.remove(dstorePort);
-        index.removeDstore(dstorePort);
-        System.out.println("Dstores: " + dstoreSessions.size());
+    public void dstoreClosedNotify(int dstorePort) {
+        synchronized (Lock.DSTORE){
+            dstoreSessions.remove(dstorePort);
+            index.removeDstore(dstorePort);
+            System.out.println("Dstores: " + dstoreSessions.size());
+        }
+
     }
+
 
     public void addDstoreAck(String filename, ControllerDstoreSession d) {
         waitingAcks.compute(filename,(key,value) -> {
@@ -85,25 +85,29 @@ public class Controller {
     //----Operations----
 
     public void controllerStoreOperation(String filename, int filesize, PrintWriter out) throws InterruptedException {
-        ControllerDstoreSession[] dstores = dstoreSessions.values().toArray(new ControllerDstoreSession[0]);
-        if(dstores.length < R) {
+        List<Integer> list;
+        synchronized (Lock.DSTORE){
+            list = index.getNDstores(R);
+            System.out.println(Arrays.toString(list.toArray()));
+            if(list.size() < R){
+                list.clear();
+                dstoreSessions.values().forEach(dstore -> list.add(dstore.getDstorePort()));
+                System.out.println(Arrays.toString(list.toArray()));
+            }
+        }
+        if(list.size() < R) {
             out.println("ERROR_NOT_ENOUGH_DSTORES"); out.flush();
         } else if (!index.setStoreInProgress(filename, filesize)) {
             out.println("ERROR_FILE_ALREADY_EXISTS"); out.flush();
         } else {
+            Collections.shuffle(list.subList(0,R));
+            System.out.println(Arrays.toString(list.toArray()));
             StringBuilder output = new StringBuilder("STORE_TO");
-            List<Integer> list = new ArrayList<>();
-            IntStream.range(0, dstores.length).forEach(list::add);
-            Collections.shuffle(list);
-
-            for(int i = 0; i < R; i++)
-                output.append(" ").append(dstores[list.get(i)].getDstorePort());
+            list.forEach( port ->  output.append(" ").append(port));
             System.out.println("Selected dstores: " + output);
             CountDownLatch latch = new CountDownLatch(R);
             waitingAcks.put(filename, latch);
-            out.println(output);
-            out.flush();
-
+            out.println(output); out.flush();
             if(!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)){
                 //TODO: log an error here -> timeout reached
                 System.out.println("timeout reached");
@@ -118,11 +122,37 @@ public class Controller {
         }
     }
 
-    public void controllerLoadOperation(String filename, PrintWriter out) {
-        List<ControllerDstoreSession> dstores = index.getDstores(filename);
-        ControllerDstoreSession dstore = dstores.get(new Random().nextInt(dstores.size()));
-        out.println("LOAD_FROM ");
+    public void controllerReloadOperation(String filename, PrintWriter out, ControllerClientSession session) {
+        List<ControllerDstoreSession> dstoreSessions = index.getDstores(filename);
+        if(dstoreSessions.size() < R){
+            out.println("ERROR_NOT_ENOUGH_DSTORES"); out.flush();
+            return;
+        }
+        List<Integer> dstorePorts = new ArrayList<>();
+        dstoreSessions.forEach(dstore -> dstorePorts.add(dstore.getDstorePort()));
+        dstorePorts.removeAll(session.loadCounter);
+        if(dstorePorts.isEmpty()) {
+            out.println("ERROR_LOAD");
+        } else {
+            int dstorePort = dstorePorts.get(0);
+            session.loadCounter.add(dstorePort);
+            out.println("LOAD_FROM " + dstorePort + " " + index.getFileSize(filename));
+        }
+        out.flush();
     }
+
+    public void controllerLoadOperation(String filename, PrintWriter out, ControllerClientSession session){
+        List<ControllerDstoreSession> dstoreSessions = index.getDstores(filename);
+        if(dstoreSessions.size() < R){
+            out.println("ERROR_NOT_ENOUGH_DSTORES");
+        } else {
+            int dstorePort = dstoreSessions.get(0).getDstorePort();
+            session.loadCounter.add(dstorePort);
+            out.println("LOAD_FROM " + dstorePort + " " + index.getFileSize(filename));
+        }
+        out.flush();
+    }
+
     //java Controller cport R timeout rebalance_period
     public static void main(String[] args) {
         int cport, R, timeout, rebalance_period;
@@ -142,7 +172,6 @@ public class Controller {
         try { new Controller(cport, R, timeout, rebalance_period); }
         catch (Exception e) {
             e.printStackTrace();
-            return;
         }
     }
 }

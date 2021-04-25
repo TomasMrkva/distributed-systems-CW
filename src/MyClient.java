@@ -6,43 +6,34 @@
 //    final int CPORT;
 //    final int TIMEOUT;
 //    final Socket socket;
+//    final BufferedReader in;
+//    final PrintWriter out;
 //
 //    public MyClient(int cport, int timeout) throws Exception {
+//        socket = new Socket("localhost", cport);
 //        CPORT = cport;
 //        TIMEOUT = timeout;
-//        System.out.println("HEMLO");
-//        socket = new Socket("localhost", CPORT);
-//        run();
+//        in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+//        out = new PrintWriter(socket.getOutputStream());
 //    }
 //
-//    private void run() throws Exception {
-//        PrintWriter out = new PrintWriter(socket.getOutputStream());
-//        BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 //
-//        for (;;){
-//            String input = System.console().readLine();
-//            out.println(input); out.flush();
-//            System.out.println("input" + input + " flushed");
-//            String line = in.readLine();
-//            System.out.println(line);
-////            String[] lineArray = input.split(" ");
-////            if(lineArray[0].equals("STORE")){
-////                out.println(input); out.flush();
-////                String line;
-////                while(!(line = in.readLine()).equals("cancel")) {
-////                    String[] responseLine = line.split(" ");
-////                    if(responseLine[0].equals("STORE_TO")){
-////                        //System.out.println(line);
-////                        int port = Integer.parseInt(responseLine[1]);
-////                        Socket socket = new Socket("localhost", port);
-////                        PrintWriter p = new PrintWriter(socket.getOutputStream());
-////                        String input2 = System.console().readLine();
-////                        p.println(input2); p.flush();
-////                    }
-////                }
-////            }
+//    private void run() throws IOException {
+//        while(true){
+//            BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+//            String line;
+//            while((line = reader.readLine()) != null){
+//                String[] lineSplit = line.split(" ");
+//                switch(lineSplit[0]){
+//                    case "STORE":
 //
+//                }
+//            }
 //        }
+//    }
+//
+//    private void storeOperation() {
+//
 //    }
 //
 //    public static void main(String[] args) {
@@ -59,13 +50,7 @@
 ////            return;
 ////        }
 //        Client client = new Client(cport, timeout,Logger.LoggingType.ON_FILE_AND_TERMINAL);
-//        try { client.connect(); } catch(IOException e) { e.printStackTrace(); return; }
-//        try { client.store(new File("Clipboard01.pdf")); } catch(IOException e) { e.printStackTrace(); }
-//
-//        try { client.store(new File("Clipboard01.pdf")); } catch(IOException e) { e.printStackTrace(); }
-//
-//        try { client.store(new File("Clipboard01.jpg")); } catch(IOException e) { e.printStackTrace(); }
-//
 //
 //    }
+//
 //}

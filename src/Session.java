@@ -19,7 +19,7 @@ public abstract class Session implements Runnable {
 
     public abstract void singleOperation(String message) throws InterruptedException;
 
-    public void cleanup(){};
+    public void cleanup(){}
 
     private void loop() throws InterruptedException {
         try {

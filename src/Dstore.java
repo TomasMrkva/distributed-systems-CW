@@ -3,7 +3,7 @@ import java.io.File;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class Dstore {
 
@@ -15,7 +15,7 @@ public class Dstore {
     final ServerSocket DSOCKET;
     final PrintWriter controllerMessages;
     final String FOLDER_NAME;
-    final CopyOnWriteArrayList<File> fileList;
+    final ConcurrentHashMap<File,Integer> files;
 
     public Dstore(int port, int cport, int timeout, String file_folder) throws Exception {
         PORT = port;
@@ -27,18 +27,17 @@ public class Dstore {
         FOLDER_NAME = file_folder;
         controllerMessages = new PrintWriter(CSOCKET.getOutputStream());
         controllerMessages.println("JOIN " + port); controllerMessages.flush();
-        fileList = new CopyOnWriteArrayList<>();
+        files = new ConcurrentHashMap<>();
         setup();
         run();
     }
 
-    private void setup() throws IOException {
+    private void setup() {
         File dir = new File(FOLDER_NAME);
         if (!dir.exists()){
-            System.out.println("made a dir");
             dir.mkdirs();
         } else {
-            fileList.removeAll(Arrays.asList(dir.listFiles()));
+            files.clear();
         }
     }
 
@@ -49,15 +48,14 @@ public class Dstore {
             new Thread( () -> {
                 try {
                     BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
+                    PrintWriter out = new PrintWriter(client.getOutputStream());
                     String line;
                     while ((line = in.readLine()) != null){
                         String[] lineSplit = line.split(" ");
-                        switch (lineSplit[0]){
-                            case "STORE":
-                                store(lineSplit, client);
-                                break;
-                            default:
-                                System.out.println("Unrecognised command");
+                        switch (lineSplit[0]) {
+                            case "STORE" -> store(lineSplit, client, out);
+                            case "LOAD_DATA" -> loadData(lineSplit[1], client, out);
+                            default -> System.out.println("Unrecognised command");
                         }
                     }
                 } catch (IOException e) {
@@ -67,16 +65,36 @@ public class Dstore {
         }
     }
 
-    private void store(String[] lineSplit, Socket client) throws IOException {
+    private void loadData(String filename, Socket client, PrintWriter out) throws IOException {
+        boolean exists = false;
+        int filesize = 0;
+        for (File f : Collections.list(files.keys())){
+            if (f.getName().equals(filename)){
+                exists = true;
+                filesize = files.get(f);
+                break;
+            }
+        }
+        if(!exists){
+            out.println("ERROR_FILE_DOES_NOT_EXIST"); out.flush();
+        } else {
+            File file = new File(FILE_FOLDER + "/" + filename);
+            InputStream inf = new FileInputStream(file);
+            OutputStream outf = client.getOutputStream();
+            byte[] bytes = inf.readNBytes(filesize);
+            outf.write(bytes);
+            inf.close();
+        }
+    }
+
+    private void store(String[] lineSplit, Socket client, PrintWriter out) throws IOException {
         String filename = FILE_FOLDER + "/" + lineSplit[1];
         int filesize = Integer.parseInt(lineSplit[2]);
-
-        PrintWriter out = new PrintWriter(client.getOutputStream());
-        InputStream fileIn = client.getInputStream();
+        InputStream in = client.getInputStream();
         File file = new File(filename);
 
         boolean exists = false;
-        for (File f : fileList){
+        for (File f : Collections.list(files.keys())){
             if (f.getName().equals(lineSplit[1])){
                 exists = true;
                 break;
@@ -84,17 +102,16 @@ public class Dstore {
         }
         if(!exists){
             out.println("ACK"); out.flush();
-            OutputStream fileOut = new FileOutputStream(file);
-            byte[] bytes = fileIn.readNBytes(filesize);
-            fileOut.write(bytes);
-            fileOut.close();
-            fileList.add(file);
+            OutputStream outf = new FileOutputStream(file);
+            byte[] bytes = in.readNBytes(filesize);
+            outf.write(bytes);
+            outf.close();
+            files.put(file,filesize);
         } else {
             System.out.println("File already exists");
         }
-        System.out.println(fileList.size());
-        controllerMessages.println("STORE_ACK " + lineSplit[1]);
-        controllerMessages.flush();
+        files.forEach((k,v) -> System.out.println(k.getName() + ", " + k));
+        controllerMessages.println("STORE_ACK " + lineSplit[1]); controllerMessages.flush();
     }
 
 
@@ -114,7 +131,6 @@ public class Dstore {
 
         } catch (Exception e) {
             e.printStackTrace();
-            return;
         }
     }
 }
