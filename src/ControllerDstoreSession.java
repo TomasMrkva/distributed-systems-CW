@@ -40,7 +40,8 @@ public class ControllerDstoreSession extends Session {
                 controller.addDstoreAck(filename, this);
                 break;
             default:
-                fileList(messageSplit);
+                System.out.println("Unrecognized command in controllerDstoreSession: " +  messageSplit[0]);
+//                fileList(messageSplit);
         }
     }
 

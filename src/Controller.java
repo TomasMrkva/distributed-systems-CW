@@ -28,7 +28,7 @@ public class Controller {
         ss = new ServerSocket(cport);
         dstoreSessions = new ConcurrentHashMap<>();
         waitingAcks = new ConcurrentHashMap<>();
-        index = new Index(r);
+        index = new Index(r, this);
         run();
     }
 
@@ -39,7 +39,7 @@ public class Controller {
             new Thread(() -> {
                 try {
                     BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
-                    String line = in.readLine();
+                    String line = in.readLine(); //TODO: line can be null if user doesnt write anything
                     String[] lineSplit = line.split(" ");
                     if (lineSplit[0].equals("JOIN")) {
                         int dstorePort = Integer.parseInt(lineSplit[1]);
@@ -68,7 +68,6 @@ public class Controller {
 
     }
 
-
     public void addDstoreAck(String filename, ControllerDstoreSession d) {
         waitingAcks.compute(filename,(key,value) -> {
             index.addDstore(filename, d);
@@ -85,23 +84,18 @@ public class Controller {
     //----Operations----
 
     public void controllerStoreOperation(String filename, int filesize, PrintWriter out) throws InterruptedException {
-        List<Integer> list;
-        synchronized (Lock.DSTORE){
-            list = index.getNDstores(R);
-            System.out.println(Arrays.toString(list.toArray()));
-            if(list.size() < R){
-                list.clear();
-                dstoreSessions.values().forEach(dstore -> list.add(dstore.getDstorePort()));
-                System.out.println(Arrays.toString(list.toArray()));
-            }
-        }
+        List<Integer> list = index.getNDstores(R);
+//        synchronized (Lock.DSTORE){
+//            list = index.getNDstores(R);
+//            System.out.println(Arrays.toString(list.toArray()));
+//        }
         if(list.size() < R) {
             out.println("ERROR_NOT_ENOUGH_DSTORES"); out.flush();
         } else if (!index.setStoreInProgress(filename, filesize)) {
             out.println("ERROR_FILE_ALREADY_EXISTS"); out.flush();
         } else {
-            Collections.shuffle(list.subList(0,R));
-            System.out.println(Arrays.toString(list.toArray()));
+//            Collections.shuffle(list.subList(0,R));
+//            System.out.println(Arrays.toString(list.toArray()));
             StringBuilder output = new StringBuilder("STORE_TO");
             list.forEach( port ->  output.append(" ").append(port));
             System.out.println("Selected dstores: " + output);

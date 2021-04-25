@@ -12,13 +12,15 @@ public class Index {
     }
 
     private final List<MyFile> files;
-//    private final Object lockStoreProgress;
-//    private final Object lockStoreFinish;
+    private final Object lockStoreProgress;
+    private final Object lockStoreFinish;
+    private final Controller controller;
 
-    public Index(int R) {
+    public Index(int R, Controller controller) {
         files = Collections.synchronizedList(new ArrayList<>());
-//        lockStoreProgress = new Object();
-//        lockStoreFinish = new Object();
+        lockStoreProgress = new Object();
+        lockStoreFinish = new Object();
+        this.controller = controller;
 //        dstoreLock =  new Object();
     }
 
@@ -27,7 +29,7 @@ public class Index {
 //    }
 
     public boolean setStoreInProgress(String filename, int filesize){
-//        synchronized (lockStoreProgress){
+        synchronized (lockStoreProgress){
             for(MyFile f : files) {
                 if(f.getName().equals(filename)){
                     Operation op = f.getOperaion();
@@ -39,14 +41,15 @@ public class Index {
             f.setOperation(Operation.STORE_IN_PROGRESS);
             files.add(f);
             return true;
-//        }
+        }
     }
 
     public List<Integer> getNDstores(int n){
         synchronized (Lock.DSTORE) {
-            List<Integer> list = new ArrayList<>();
-            files.forEach(myFile -> myFile.getDstores().forEach(dstore -> list.add(dstore.getDstorePort())));
-            Map<Integer, Long> counts = list.stream().collect(Collectors.groupingBy(e -> e, Collectors.counting()));
+            List<Integer> dstores = new ArrayList<>();
+            controller.dstoreSessions.values().forEach(value -> dstores.add(value.getDstorePort()));
+            files.forEach(myFile -> myFile.getDstores().forEach(dstore -> dstores.add(dstore.getDstorePort())));
+            Map<Integer, Long> counts = dstores.stream().collect(Collectors.groupingBy(e -> e, Collectors.counting()));
             counts = counts.entrySet().stream()
                     .sorted(Map.Entry.comparingByValue())
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
@@ -74,7 +77,7 @@ public class Index {
         m3.addDstore(c4); m3.addDstore(c4);
         m4.addDstore(c5); m4.addDstore(c1);
         m5.addDstore(c2); m5.addDstore(c5); m5.addDstore(c1);
-        Index index = new Index(4);
+        Index index = new Index(4,null);
         MyFile[] files = {m1,m2,m3,m4,m5,m6};
         index.files.addAll(Arrays.asList(files));
         System.out.println("Result:");
@@ -82,8 +85,8 @@ public class Index {
 
     }
 
-    public synchronized boolean setStoreComplete(String filename){
-//        synchronized (lockStoreFinish){
+    public boolean setStoreComplete(String filename){
+        synchronized (lockStoreFinish){
             for(MyFile f : files) {
                 if(f.getName().equals(filename)){
                     f.setOperation(Operation.STORE_COMPLETE);
@@ -91,7 +94,7 @@ public class Index {
                 }
             }
             return false;
-//        }
+        }
     }
 
     public Integer getFileSize(String filename){
@@ -114,7 +117,7 @@ public class Index {
         }
     }
 
-    public synchronized boolean addDstore(String filename, ControllerDstoreSession dstore) {
+    public boolean addDstore(String filename, ControllerDstoreSession dstore) {
         synchronized (Lock.DSTORE){
             for(MyFile f : files) {
                 if(f.getName().equals(filename)){
@@ -131,7 +134,7 @@ public class Index {
      * This method is called when a dstore becomes unavailable
      * @param dstorePort the port of dstore to remove
      */
-    public synchronized void removeDstore(int dstorePort) {
+    public void removeDstore(int dstorePort) {
         synchronized (Lock.DSTORE){
             Iterator<MyFile> it = files.iterator();
             while(it.hasNext()){
@@ -149,7 +152,7 @@ public class Index {
      * @param filename
      * @param dstore
      */
-    public synchronized void removeDstore(String filename, ControllerDstoreSession dstore){
+    public void removeDstore(String filename, ControllerDstoreSession dstore){
         synchronized (Lock.DSTORE){
             Iterator<MyFile> it = files.iterator();
             while(it.hasNext()){

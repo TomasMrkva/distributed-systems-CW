@@ -3,7 +3,7 @@ import java.io.File;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
 
 public class Dstore {
 
@@ -37,6 +37,12 @@ public class Dstore {
         if (!dir.exists()){
             dir.mkdirs();
         } else {
+            String[] entries = dir.list();
+            System.out.println("Removing files: " + Arrays.toString(entries));
+            for(String s: entries){
+                File currentFile = new File(dir.getPath(),s);
+                currentFile.delete();
+            }
             files.clear();
         }
     }
@@ -55,7 +61,7 @@ public class Dstore {
                         switch (lineSplit[0]) {
                             case "STORE" -> store(lineSplit, client, out);
                             case "LOAD_DATA" -> loadData(lineSplit[1], client, out);
-                            default -> System.out.println("Unrecognised command");
+                            default -> System.out.println("Unrecognised command " + line);
                         }
                     }
                 } catch (IOException e) {
@@ -84,15 +90,11 @@ public class Dstore {
             byte[] bytes = inf.readNBytes(filesize);
             outf.write(bytes);
             inf.close();
+            outf.close();
         }
     }
 
     private void store(String[] lineSplit, Socket client, PrintWriter out) throws IOException {
-        String filename = FILE_FOLDER + "/" + lineSplit[1];
-        int filesize = Integer.parseInt(lineSplit[2]);
-        InputStream in = client.getInputStream();
-        File file = new File(filename);
-
         boolean exists = false;
         for (File f : Collections.list(files.keys())){
             if (f.getName().equals(lineSplit[1])){
@@ -102,11 +104,8 @@ public class Dstore {
         }
         if(!exists){
             out.println("ACK"); out.flush();
-            OutputStream outf = new FileOutputStream(file);
-            byte[] bytes = in.readNBytes(filesize);
-            outf.write(bytes);
-            outf.close();
-            files.put(file,filesize);
+            if(!storeAction(client, lineSplit[1], Integer.parseInt(lineSplit[2])))
+                return;
         } else {
             System.out.println("File already exists");
         }
@@ -114,6 +113,32 @@ public class Dstore {
         controllerMessages.println("STORE_ACK " + lineSplit[1]); controllerMessages.flush();
     }
 
+    private boolean storeAction(Socket client, String filename, int filesize) {
+        Callable<byte[]> task = () -> {
+            InputStream in = client.getInputStream();
+            return in.readNBytes(filesize);
+        };
+        ExecutorService executor = Executors.newFixedThreadPool(1);
+        try{
+            byte[] bytes = executor.submit(task).get(TIMEOUT, TimeUnit.MILLISECONDS);
+            if(bytes.length != filesize)
+                return false;
+            File file = new File(FILE_FOLDER + "/" + filename);
+            OutputStream outf = new FileOutputStream(file);
+            outf.write(bytes);
+            outf.close();
+            files.put(file,filesize);
+            return true;
+        } catch (ExecutionException | InterruptedException | IOException e){
+            e.printStackTrace();
+            System.out.println("Unexpected stuff happened");
+            return false;
+        } catch (TimeoutException e) {
+            System.out.println("Timeout expired");
+            return false;
+        }
+
+    }
 
     //java Controller cport R timeout rebalance_period
     public static void main(String[] args) {
