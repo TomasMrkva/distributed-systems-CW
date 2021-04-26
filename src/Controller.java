@@ -15,7 +15,8 @@ public class Controller {
     final private ServerSocket ss;
     final public Index index;
     public ConcurrentHashMap<Integer,ControllerDstoreSession> dstoreSessions;
-    public ConcurrentHashMap<String, CountDownLatch> waitingAcks;
+    public ConcurrentHashMap<String, CountDownLatch> waitingStoreAcks;
+    public ConcurrentHashMap<String, CountDownLatch> waitingRemoveAcks;
 
     public Controller(int cport, int r, int timeout, int rebalance_period) throws Exception {
         CPORT = cport;
@@ -24,7 +25,8 @@ public class Controller {
         REBALANCE_PERIOD = rebalance_period;
         ss = new ServerSocket(cport);
         dstoreSessions = new ConcurrentHashMap<>();
-        waitingAcks = new ConcurrentHashMap<>();
+        waitingStoreAcks = new ConcurrentHashMap<>();
+        waitingRemoveAcks = new ConcurrentHashMap<>();
         index = new Index(this);
         run();
     }
@@ -64,9 +66,9 @@ public class Controller {
 //        }
     }
 
-    public void addDstoreAck(String filename, ControllerDstoreSession d) {
-        waitingAcks.compute(filename,(key,value) -> {
-            index.addDstore(filename, d);
+    public void addStoreAck(String filename, ControllerDstoreSession dstore) {
+        waitingStoreAcks.compute(filename,(key, value) -> {
+            index.addDstore(filename, dstore);
            if(value.getCount() == 1) {
                value.countDown();
                return null;
@@ -77,17 +79,49 @@ public class Controller {
         });
     }
 
+    public void addRemoveAck(String filename, ControllerDstoreSession dstore) {
+        waitingRemoveAcks.compute(filename,(key,value) -> {
+            index.removeDstore(filename, dstore);
+            if(value.getCount() == 1) {
+                value.countDown();
+                return null;
+            } else {
+                value.countDown();
+                return value;
+            }
+        });
+    }
+
     //----Operations----
 
-    public void controllerRemoveOperation(String filename, PrintWriter out){
+    public void controllerRemoveOperation(String filename, PrintWriter out) throws InterruptedException {
         if(dstoreSessions.size() < R) {
             out.println("ERROR_NOT_ENOUGH_DSTORES"); out.flush();
         } else if (!index.setRemoveInProgress(filename)) {
             out.println("ERROR_FILE_DOES_NOT_EXIST"); out.flush();
         } else {
             //TODO: not sure if this is safe
-            dstoreSessions.values().forEach( v -> v.sendMessageToDstore("REMOVE " + filename));
+            List<ControllerDstoreSession> dstores = new ArrayList<>(index.getDstores(filename));
+            dstores.forEach( v -> v.sendMessageToDstore("REMOVE " + filename));
+
+            CountDownLatch latch = new CountDownLatch(R);
+            waitingRemoveAcks.put(filename, latch);
+            if(!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)){
+                //TODO: log an error here -> timeout reached
+                System.out.println("timeout reached");
+                index.removeFile(filename);
+                waitingStoreAcks.remove(filename);
+            } else {
+                index.removeFile(filename);
+                out.println("REMOVE_COMPLETE");
+                waitingStoreAcks.remove(filename);
+                out.flush();
+            }
         }
+    }
+
+    public void controllerRemoveError(){
+
     }
 
     public void controllerListOperation(PrintWriter out){
@@ -122,17 +156,17 @@ public class Controller {
             list.forEach( port ->  output.append(" ").append(port));
             System.out.println("Selected dstores: " + output);
             CountDownLatch latch = new CountDownLatch(R);
-            waitingAcks.put(filename, latch);
+            waitingStoreAcks.put(filename, latch);
             out.println(output); out.flush();
             if(!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)){
                 //TODO: log an error here -> timeout reached
                 System.out.println("timeout reached");
                 index.removeFile(filename);
-                waitingAcks.remove(filename);
+                waitingStoreAcks.remove(filename);
             } else {
                 index.setStoreComplete(filename);
                 out.println("STORE_COMPLETE");
-                waitingAcks.remove(filename);
+                waitingStoreAcks.remove(filename);
                 out.flush();
             }
         }

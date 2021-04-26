@@ -8,7 +8,7 @@ public class Index {
         STORE_IN_PROGRESS,
         STORE_COMPLETE,
         REMOVE_IN_PROGRESS,
-        REMOVE_COMPLETE
+//        REMOVE_COMPLETE
     }
 
     private final List<MyFile> files;
@@ -42,23 +42,35 @@ public class Index {
         }
     }
 
-    public boolean exists(String filename){
+    public boolean setStoreComplete(String filename){
         synchronized (files){
-            for(MyFile f : files){
-                if(f.exists())
+            for(MyFile f : files) {
+                if(f.getName().equals(filename)){
+                    f.setOperation(Operation.STORE_COMPLETE);
                     return true;
+                }
             }
             return false;
         }
     }
 
+//    public boolean exists(String filename){
+//        synchronized (files){
+//            for(MyFile f : files){
+//                if(f.exists())
+//                    return true;
+//            }
+//            return false;
+//        }
+//    }
+
     public boolean setRemoveInProgress(String filename){
         synchronized (files){
             for(MyFile f : files) {
                 if(f.getName().equals(filename)){
-                    if(!f.exists())
+                    if(!f.exists()) {
                         return false;
-                    else {
+                    } else {
                         f.setOperation(Operation.REMOVE_IN_PROGRESS);
                         return true;
                     }
@@ -123,17 +135,6 @@ public class Index {
 
     }
 
-    public boolean setStoreComplete(String filename){
-        synchronized (files){
-            for(MyFile f : files) {
-                if(f.getName().equals(filename)){
-                    f.setOperation(Operation.STORE_COMPLETE);
-                    return true;
-                }
-            }
-            return false;
-        }
-    }
 
     public void removeFile(String filename){
         synchronized (files){
@@ -201,7 +202,6 @@ public class Index {
      * @param dstore
      */
     public void removeDstore(String filename, ControllerDstoreSession dstore){
-//        synchronized (Lock.DSTORE){
         synchronized (files){
             Iterator<MyFile> it = files.iterator();
             while(it.hasNext()){
@@ -212,7 +212,6 @@ public class Index {
                     it.remove();
             }
         }
-//        }
     }
 
 }

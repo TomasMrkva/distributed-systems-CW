@@ -88,13 +88,13 @@ public class Dstore {
         }
     }
 
-    private void removeFile(String filename, PrintWriter out){
+    private void removeFile(String filename, PrintWriter out) {
         System.out.println("Before removing the file: " + files.size());
         boolean removed = files.removeIf( fileRecord -> fileRecord.getName().equals(filename));
-        if (!removed){
-             out.println("ERROR_FILE_DOES_NOT_EXIST" + " " + filename);
-             out.flush();
-             return;
+        if (!removed) {
+            controllerMessages.println("ERROR_FILE_DOES_NOT_EXIST" + " " + filename);
+            controllerMessages.flush();
+            return;
         }
         File file = new File(FILE_FOLDER + "/" + filename);
         if (file.delete())
@@ -132,13 +132,13 @@ public class Dstore {
 
     private void store(String[] lineSplit, Socket client, PrintWriter out) throws IOException {
         boolean exists = false;
-        for (FileRecord f : files){
+        for (FileRecord f : files) {
             if (f.getName().equals(lineSplit[1])){
                 exists = true;
                 break;
             }
         }
-        if(!exists){
+        if (!exists) {
             out.println("ACK"); out.flush();
             if(!storeAction(client, lineSplit[1], Integer.parseInt(lineSplit[2])))
                 return;

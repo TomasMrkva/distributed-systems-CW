@@ -39,14 +39,22 @@ public class ControllerDstoreSession extends Session {
     @Override
     public void singleOperation(String message) throws InterruptedException {
         String[] messageSplit = message.split(" ");
+        String filename;
         switch (messageSplit[0]){
             case "STORE_ACK":
-                String filename = messageSplit[1];
+                filename = messageSplit[1];
                 System.out.println("STORE_ACK " + "received from port: " + dstorePort);
-                controller.addDstoreAck(filename, this);
+                controller.addStoreAck(filename, this);
+                break;
+            case "REMOVE_ACK":
+                filename = messageSplit[1];
+                controller.addRemoveAck(filename, this);
+                break;
+            case "ERROR_FILE_DOES_NOT_EXIST":
+                System.out.println(message);
                 break;
             default:
-                System.out.println("Unrecognized command in controllerDstoreSession: " +  messageSplit[0]);
+                System.out.println("Unrecognized command in controllerDstoreSession: " +  message);
 //                fileList(messageSplit);
         }
     }
