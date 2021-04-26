@@ -11,13 +11,8 @@ public class Dstore {
 
         private final int filesize;
 
-        public FileRecord(String pathname, int filesize) {
-            super(pathname);
-            this.filesize = filesize;
-        }
-
-        public FileRecord(String parent, String child, int filesize) {
-            super(parent, child);
+        public FileRecord(String filename, int filesize) {
+            super(FILE_FOLDER + "/" + filename);
             this.filesize = filesize;
         }
 
@@ -94,9 +89,21 @@ public class Dstore {
     }
 
     private void removeFile(String filename, PrintWriter out){
-        System.out.println("Before removing the file");
-        files.removeIf( fileRecord -> fileRecord.getName().equals(filename));
-        System.out.println("After removing the file");
+        System.out.println("Before removing the file: " + files.size());
+        boolean removed = files.removeIf( fileRecord -> fileRecord.getName().equals(filename));
+        if (!removed){
+             out.println("ERROR_FILE_DOES_NOT_EXIST" + " " + filename);
+             out.flush();
+             return;
+        }
+        File file = new File(FILE_FOLDER + "/" + filename);
+        if (file.delete())
+            System.out.println("File removed successfully");
+        else
+            System.out.println("Failed to remove a file");
+        System.out.println("After removing the file: " + files.size());
+        out.println("REMOVE_ACK" + " " + filename);
+        out.flush();
     }
 
     private void loadData(String filename, Socket client) throws IOException {
@@ -113,7 +120,7 @@ public class Dstore {
             System.out.println("Dstore - File does not exist: " + filename);
             client.close();
         } else {
-            File file = new FileRecord(FILE_FOLDER + "/" , filename , filesize);
+            File file = new FileRecord(filename, filesize);
             InputStream inf = new FileInputStream(file);
             OutputStream outf = client.getOutputStream();
             byte[] bytes = inf.readNBytes(filesize);
@@ -150,7 +157,7 @@ public class Dstore {
             return bytes;
         };
         ExecutorService executor = Executors.newFixedThreadPool(1);
-        FileRecord file = new FileRecord(FILE_FOLDER + "/" + filename, filename, filesize);
+        FileRecord file = new FileRecord(filename, filesize);
         try (OutputStream outf = new FileOutputStream(file)){
             Future<byte[]> future = executor.submit(task);
             byte[] bytes = future.get(TIMEOUT, TimeUnit.MILLISECONDS);
