@@ -1,7 +1,4 @@
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
@@ -28,7 +25,7 @@ public class Controller {
         ss = new ServerSocket(cport);
         dstoreSessions = new ConcurrentHashMap<>();
         waitingAcks = new ConcurrentHashMap<>();
-        index = new Index(r, this);
+        index = new Index(this);
         run();
     }
 
@@ -60,12 +57,11 @@ public class Controller {
     }
 
     public void dstoreClosedNotify(int dstorePort) {
-        synchronized (Lock.DSTORE){
+//        synchronized (Lock.DSTORE){
             dstoreSessions.remove(dstorePort);
             index.removeDstore(dstorePort);
             System.out.println("Dstores: " + dstoreSessions.size());
-        }
-
+//        }
     }
 
     public void addDstoreAck(String filename, ControllerDstoreSession d) {
@@ -83,8 +79,34 @@ public class Controller {
 
     //----Operations----
 
+    public void controllerRemoveOperation(String filename, PrintWriter out){
+        if(dstoreSessions.size() < R) {
+            out.println("ERROR_NOT_ENOUGH_DSTORES"); out.flush();
+        } else if (!index.setRemoveInProgress(filename)) {
+            out.println("ERROR_FILE_DOES_NOT_EXIST"); out.flush();
+        } else {
+            //TODO: not sure if this is safe
+            dstoreSessions.values().forEach( v -> v.sendMessageToDstore("REMOVE " + filename));
+        }
+    }
+
+    public void controllerListOperation(PrintWriter out){
+        if(dstoreSessions.size() < R){
+            out.println("ERROR_NOT_ENOUGH_DSTORES");
+        } else {
+            StringBuilder output = new StringBuilder("LIST");
+            List<MyFile> files = new ArrayList<>(index.getFiles());
+            for (MyFile f : files){
+                if(f.exists())
+                output.append(" ").append(f.getName());
+            }
+            out.println(output);
+        }
+        out.flush();
+    }
+
     public void controllerStoreOperation(String filename, int filesize, PrintWriter out) throws InterruptedException {
-        List<Integer> list = index.getNDstores(R);
+        List<Integer> list = new ArrayList<>(index.getNDstores(R));
 //        synchronized (Lock.DSTORE){
 //            list = index.getNDstores(R);
 //            System.out.println(Arrays.toString(list.toArray()));
@@ -105,7 +127,7 @@ public class Controller {
             if(!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)){
                 //TODO: log an error here -> timeout reached
                 System.out.println("timeout reached");
-                index.setStoreComplete(filename);
+                index.removeFile(filename);
                 waitingAcks.remove(filename);
             } else {
                 index.setStoreComplete(filename);
@@ -116,8 +138,24 @@ public class Controller {
         }
     }
 
+    public void controllerLoadOperation(String filename, PrintWriter out, ControllerClientSession session){
+        if (!index.fileExists(filename)){
+            out.println("ERROR_FILE_DOES_NOT_EXIST"); out.flush();
+            return;
+        }
+        List<ControllerDstoreSession> dstoreSessions = new ArrayList<>(index.getDstores(filename));
+        if(dstoreSessions.size() < R){
+            out.println("ERROR_NOT_ENOUGH_DSTORES");
+        } else {
+            int dstorePort = dstoreSessions.get(0).getDstorePort();
+            session.loadCounter.add(dstorePort);
+            out.println("LOAD_FROM " + dstorePort + " " + index.getFileSize(filename));
+        }
+        out.flush();
+    }
+
     public void controllerReloadOperation(String filename, PrintWriter out, ControllerClientSession session) {
-        List<ControllerDstoreSession> dstoreSessions = index.getDstores(filename);
+        List<ControllerDstoreSession> dstoreSessions = new ArrayList<>(index.getDstores(filename));
         if(dstoreSessions.size() < R){
             out.println("ERROR_NOT_ENOUGH_DSTORES"); out.flush();
             return;
@@ -129,18 +167,6 @@ public class Controller {
             out.println("ERROR_LOAD");
         } else {
             int dstorePort = dstorePorts.get(0);
-            session.loadCounter.add(dstorePort);
-            out.println("LOAD_FROM " + dstorePort + " " + index.getFileSize(filename));
-        }
-        out.flush();
-    }
-
-    public void controllerLoadOperation(String filename, PrintWriter out, ControllerClientSession session){
-        List<ControllerDstoreSession> dstoreSessions = index.getDstores(filename);
-        if(dstoreSessions.size() < R){
-            out.println("ERROR_NOT_ENOUGH_DSTORES");
-        } else {
-            int dstorePort = dstoreSessions.get(0).getDstorePort();
             session.loadCounter.add(dstorePort);
             out.println("LOAD_FROM " + dstorePort + " " + index.getFileSize(filename));
         }

@@ -7,6 +7,26 @@ import java.util.concurrent.*;
 
 public class Dstore {
 
+    class FileRecord extends File {
+
+        private final int filesize;
+
+        public FileRecord(String pathname, int filesize) {
+            super(pathname);
+            this.filesize = filesize;
+        }
+
+        public FileRecord(String parent, String child, int filesize) {
+            super(parent, child);
+            this.filesize = filesize;
+        }
+
+        public int getFilesize() {
+            return filesize;
+        }
+
+    }
+
     final int PORT;
     final int CPORT;
     final int TIMEOUT;
@@ -15,7 +35,8 @@ public class Dstore {
     final ServerSocket DSOCKET;
     final PrintWriter controllerMessages;
     final String FOLDER_NAME;
-    final ConcurrentHashMap<File,Integer> files;
+    final Set<FileRecord> files;
+    final File dir;
 
     public Dstore(int port, int cport, int timeout, String file_folder) throws Exception {
         PORT = port;
@@ -27,13 +48,13 @@ public class Dstore {
         FOLDER_NAME = file_folder;
         controllerMessages = new PrintWriter(CSOCKET.getOutputStream());
         controllerMessages.println("JOIN " + port); controllerMessages.flush();
-        files = new ConcurrentHashMap<>();
+        files = ConcurrentHashMap.newKeySet();
+        dir = new File(FOLDER_NAME);
         setup();
         run();
     }
 
     private void setup() {
-        File dir = new File(FOLDER_NAME);
         if (!dir.exists()){
             dir.mkdirs();
         } else {
@@ -60,7 +81,8 @@ public class Dstore {
                         String[] lineSplit = line.split(" ");
                         switch (lineSplit[0]) {
                             case "STORE" -> store(lineSplit, client, out);
-                            case "LOAD_DATA" -> loadData(lineSplit[1], client, out);
+                            case "LOAD_DATA" -> loadData(lineSplit[1], client);
+                            case "REMOVE" -> removeFile(lineSplit[1],out);
                             default -> System.out.println("Unrecognised command " + line);
                         }
                     }
@@ -71,32 +93,39 @@ public class Dstore {
         }
     }
 
-    private void loadData(String filename, Socket client, PrintWriter out) throws IOException {
+    private void removeFile(String filename, PrintWriter out){
+        System.out.println("Before removing the file");
+        files.removeIf( fileRecord -> fileRecord.getName().equals(filename));
+        System.out.println("After removing the file");
+    }
+
+    private void loadData(String filename, Socket client) throws IOException {
         boolean exists = false;
         int filesize = 0;
-        for (File f : Collections.list(files.keys())){
+        for (FileRecord f : files){
             if (f.getName().equals(filename)){
                 exists = true;
-                filesize = files.get(f);
+                filesize = f.getFilesize();
                 break;
             }
         }
         if(!exists){
-            out.println("ERROR_FILE_DOES_NOT_EXIST"); out.flush();
+            System.out.println("Dstore - File does not exist: " + filename);
+            client.close();
         } else {
-            File file = new File(FILE_FOLDER + "/" + filename);
+            File file = new FileRecord(FILE_FOLDER + "/" , filename , filesize);
             InputStream inf = new FileInputStream(file);
             OutputStream outf = client.getOutputStream();
             byte[] bytes = inf.readNBytes(filesize);
             outf.write(bytes);
             inf.close();
-            outf.close();
+//            outf.close();
         }
     }
 
     private void store(String[] lineSplit, Socket client, PrintWriter out) throws IOException {
         boolean exists = false;
-        for (File f : Collections.list(files.keys())){
+        for (FileRecord f : files){
             if (f.getName().equals(lineSplit[1])){
                 exists = true;
                 break;
@@ -107,27 +136,28 @@ public class Dstore {
             if(!storeAction(client, lineSplit[1], Integer.parseInt(lineSplit[2])))
                 return;
         } else {
-            System.out.println("File already exists");
+            System.out.println("File already exists, closing socket");
+            client.close();
         }
-        files.forEach((k,v) -> System.out.println(k.getName() + ", " + k));
+        files.forEach( file -> System.out.println(file.getName() + " : " + file.getFilesize()));
         controllerMessages.println("STORE_ACK " + lineSplit[1]); controllerMessages.flush();
     }
 
     private boolean storeAction(Socket client, String filename, int filesize) {
         Callable<byte[]> task = () -> {
             InputStream in = client.getInputStream();
-            return in.readNBytes(filesize);
+            byte[] bytes = in.readNBytes(filesize);
+            return bytes;
         };
         ExecutorService executor = Executors.newFixedThreadPool(1);
-        try{
-            byte[] bytes = executor.submit(task).get(TIMEOUT, TimeUnit.MILLISECONDS);
+        FileRecord file = new FileRecord(FILE_FOLDER + "/" + filename, filename, filesize);
+        try (OutputStream outf = new FileOutputStream(file)){
+            Future<byte[]> future = executor.submit(task);
+            byte[] bytes = future.get(TIMEOUT, TimeUnit.MILLISECONDS);
             if(bytes.length != filesize)
                 return false;
-            File file = new File(FILE_FOLDER + "/" + filename);
-            OutputStream outf = new FileOutputStream(file);
             outf.write(bytes);
-            outf.close();
-            files.put(file,filesize);
+            files.add(file);
             return true;
         } catch (ExecutionException | InterruptedException | IOException e){
             e.printStackTrace();
@@ -137,7 +167,6 @@ public class Dstore {
             System.out.println("Timeout expired");
             return false;
         }
-
     }
 
     //java Controller cport R timeout rebalance_period

@@ -21,12 +21,24 @@ public class MyFile {
         return filename;
     }
 
-    public void setOperation(Index.Operation op) {
+    public synchronized void setOperation(Index.Operation op) {
         operation = op;
     }
 
-    public Index.Operation getOperaion() {
+    public synchronized Index.Operation getOperaion() {
         return operation;
+    }
+
+    public synchronized boolean exists(){
+        return operation == Index.Operation.STORE_COMPLETE;
+    }
+
+    public synchronized boolean canStore(){
+        if(operation == Index.Operation.REMOVE_IN_PROGRESS
+        || operation == Index.Operation.STORE_IN_PROGRESS
+        || operation == Index.Operation.STORE_COMPLETE)
+            return false;
+        return true;
     }
 
     public boolean addDstore(ControllerDstoreSession controllerDstoreSession) {
@@ -38,7 +50,9 @@ public class MyFile {
     }
 
     public List<ControllerDstoreSession> getDstores(){
-        return dstores;
+        synchronized (dstores){
+            return dstores;
+        }
     }
 
     public int getFilesize() {

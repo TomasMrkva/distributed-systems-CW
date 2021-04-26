@@ -1,4 +1,5 @@
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.Arrays;
 
@@ -9,18 +10,19 @@ public class ControllerDstoreSession extends Session {
 
     private int dstorePort;
 //    private BufferedReader in;
-//    private PrintWriter out;
-    private Socket receivingSocket;
-    private Socket sendingSocket;
+    private PrintWriter out;
+//    private Socket receivingSocket;
+//    private Socket sendingSocket;
     private Controller controller;
     public int numberOfFiles;
 
-    public ControllerDstoreSession(int dstorePort, Socket receivingSocket, Controller controller, String message) throws IOException {
-        super(receivingSocket,message,"Dstore");
+    public ControllerDstoreSession(int dstorePort, Socket dstoreSocket, Controller controller, String message) throws IOException {
+        super(dstoreSocket,message,"Dstore");
         this.dstorePort = dstorePort;
-        this.receivingSocket = receivingSocket;
-        this.sendingSocket = new Socket("localhost",dstorePort);
+//        this.receivingSocket = dstoreSocket;
+//        this.sendingSocket = new Socket("localhost",dstorePort);
         this.controller = controller;
+        out = new PrintWriter(dstoreSocket.getOutputStream());
         this.numberOfFiles = 0;
 //        in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
 //        out = new PrintWriter(connection.getOutputStream());
@@ -28,6 +30,10 @@ public class ControllerDstoreSession extends Session {
 
     public int getDstorePort(){
         return dstorePort;
+    }
+
+    public void sendMessageToDstore(String message){
+        out.println(message); out.flush();
     }
 
     @Override

@@ -26,6 +26,8 @@ public class ControllerClientSession extends Session {
             case "STORE" -> controller.controllerStoreOperation(messageSplit[1], Integer.parseInt(messageSplit[2]), out);
             case "LOAD" -> controller.controllerLoadOperation(messageSplit[1], out, this);
             case "RELOAD" -> controller.controllerReloadOperation(messageSplit[1], out, this);
+            case "REMOVE" -> controller.controllerRemoveOperation(messageSplit[1], out);
+            case "LIST" -> controller.controllerListOperation(out);
             default -> System.out.println("NOT MATCHED");
         }
     }
