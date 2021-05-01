@@ -102,14 +102,15 @@ public class Controller {
         } else {
             //TODO: not sure if this is safe
             List<ControllerDstoreSession> dstores = new ArrayList<>(index.getDstores(filename));
-            dstores.forEach( v -> v.sendMessageToDstore("REMOVE " + filename));
+            dstores.forEach( dstoreSession -> dstoreSession.sendMessageToDstore("REMOVE " + filename));
 
             CountDownLatch latch = new CountDownLatch(R);
             waitingRemoveAcks.put(filename, latch);
             if(!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)){
                 //TODO: log an error here -> timeout reached
                 System.out.println("timeout reached");
-                index.removeFile(filename);
+                index.setRemoveComplete(filename);  //TODO: remove file in rebalance
+//                index.removeFile(filename);
                 waitingStoreAcks.remove(filename);
             } else {
                 index.removeFile(filename);

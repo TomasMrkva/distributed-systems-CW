@@ -8,7 +8,7 @@ public class Index {
         STORE_IN_PROGRESS,
         STORE_COMPLETE,
         REMOVE_IN_PROGRESS,
-//        REMOVE_COMPLETE
+        REMOVE_COMPLETE
     }
 
     private final List<MyFile> files;
@@ -72,6 +72,22 @@ public class Index {
                         return false;
                     } else {
                         f.setOperation(Operation.REMOVE_IN_PROGRESS);
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+    }
+
+    public boolean setRemoveComplete(String filename){
+        synchronized (files){
+            for(MyFile f : files) {
+                if(f.getName().equals(filename)){
+                    if(!f.exists()) {
+                        return false;
+                    } else {
+                        f.setOperation(Operation.REMOVE_COMPLETE);
                         return true;
                     }
                 }

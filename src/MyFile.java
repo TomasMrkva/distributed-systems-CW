@@ -34,11 +34,7 @@ public class MyFile {
     }
 
     public synchronized boolean canStore(){
-        if(operation == Index.Operation.REMOVE_IN_PROGRESS
-        || operation == Index.Operation.STORE_IN_PROGRESS
-        || operation == Index.Operation.STORE_COMPLETE)
-            return false;
-        return true;
+        return operation == null || operation == Index.Operation.REMOVE_COMPLETE;
     }
 
     public boolean addDstore(ControllerDstoreSession controllerDstoreSession) {
