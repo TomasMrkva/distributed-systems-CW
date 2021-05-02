@@ -25,7 +25,7 @@ public class MyFile {
         operation = op;
     }
 
-    public synchronized Index.Operation getOperaion() {
+    public synchronized Index.Operation getOperation() {
         return operation;
     }
 

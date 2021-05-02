@@ -14,18 +14,16 @@ public class ControllerDstoreSession extends Session {
 //    private Socket receivingSocket;
 //    private Socket sendingSocket;
     private Controller controller;
+    private Socket dstoreSocket;
     public int numberOfFiles;
 
     public ControllerDstoreSession(int dstorePort, Socket dstoreSocket, Controller controller, String message) throws IOException {
         super(dstoreSocket,message,"Dstore");
         this.dstorePort = dstorePort;
-//        this.receivingSocket = dstoreSocket;
-//        this.sendingSocket = new Socket("localhost",dstorePort);
+        this.dstoreSocket = dstoreSocket;
         this.controller = controller;
         out = new PrintWriter(dstoreSocket.getOutputStream());
         this.numberOfFiles = 0;
-//        in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-//        out = new PrintWriter(connection.getOutputStream());
     }
 
     public int getDstorePort(){
@@ -33,17 +31,23 @@ public class ControllerDstoreSession extends Session {
     }
 
     public void sendMessageToDstore(String message){
+        ControllerLogger.getInstance().messageSent(dstoreSocket, message);
         out.println(message); out.flush();
     }
 
     @Override
-    public void singleOperation(String message) throws InterruptedException {
+    public void singleOperation(String message) {
         String[] messageSplit = message.split(" ");
+        ControllerLogger.getInstance().messageReceived(dstoreSocket, message);
         String filename;
         switch (messageSplit[0]){
+            case "JOIN":
+                controller.dstoreSessions.put(dstorePort, this);
+                System.out.println("Dstores: " + controller.dstoreSessions.size());
+                break;
             case "STORE_ACK":
                 filename = messageSplit[1];
-                System.out.println("STORE_ACK " + "received from port: " + dstorePort);
+//                System.out.println("STORE_ACK " + "received from port: " + dstorePort);
                 controller.addStoreAck(filename, this);
                 break;
             case "REMOVE_ACK":
@@ -66,6 +70,7 @@ public class ControllerDstoreSession extends Session {
 
     @Override
     public void cleanup() {
+        System.out.println("SOMETHING WRONG HAPPENED");
         controller.dstoreClosedNotify(dstorePort);
         super.cleanup();
     }

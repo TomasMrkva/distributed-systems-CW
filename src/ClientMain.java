@@ -5,32 +5,32 @@ public class ClientMain {
 
 	public static void main(String[] args) {
 
-		int cport = -1;
-		int timeout = -1;
-		try {
-			// parse arguments
-			cport = Integer.parseInt(args[0]);
-			timeout = Integer.parseInt(args[1]);
-		} catch (NumberFormatException e) {
-			System.err.println("Error parsing arguments: " + e.getMessage());
-			System.err.println("Expected: java ClientMain cport timeout");
-			System.exit(-1);
-		}
+//		int cport = -1;
+//		int timeout = -1;
+//		try {
+//			// parse arguments
+//			cport = Integer.parseInt(args[0]);
+//			timeout = Integer.parseInt(args[1]);
+//		} catch (NumberFormatException e) {
+//			System.err.println("Error parsing arguments: " + e.getMessage());
+//			System.err.println("Expected: java ClientMain cport timeout");
+//			System.exit(-1);
+//		}
 
 		File downloadFolder = new File("downloads");
 		if (!downloadFolder.exists())
 			if (!downloadFolder.mkdir()) throw new RuntimeException("Cannot create download folder (folder absolute path: " + downloadFolder.getAbsolutePath() + ")");
 
-		testClient(cport, timeout, downloadFolder);
+//		testClient(cport, timeout, downloadFolder);
 
 		// example to launch a number of concurrent clients, each doing the same operations
-		/*for (int i = 0; i < 10; i++) {
+		for (int i = 0; i < 30; i++) {
 			new Thread() {
 				public void run() {
-					testClient(cport, timeout, downloadFolder);
+					testClient(4444, 5000, downloadFolder);
 				}
 			}.start();
-		}*/
+		}
 	}
 
 	public static void testClient(int cport, int timeout, File downloadFolder) {
@@ -38,17 +38,17 @@ public class ClientMain {
 
 		try {
 
-			client = new Client(cport, timeout, Logger.LoggingType.ON_FILE_AND_TERMINAL);
+			client = new Client(cport, timeout, Logger.LoggingType.ON_TERMINAL_ONLY);
 
 			try { client.connect(); } catch(IOException e) { e.printStackTrace(); return; }
 
 			try { list(client); } catch(IOException e) { e.printStackTrace(); }
 
-			try { client.store(new File("Clipboard01.pdf")); } catch(IOException e) { e.printStackTrace(); }
+			try { client.store(new File("test.txt")); } catch(IOException e) { e.printStackTrace(); }
 
-			try { client.store(new File("Clipboard01.pdf")); } catch(IOException e) { e.printStackTrace(); }
+			try { client.store(new File("doggo.jpg")); } catch(IOException e) { e.printStackTrace(); }
 
-			try { client.store(new File("Clipboard01.jpg")); } catch(IOException e) { e.printStackTrace(); }
+			try { client.store(new File("catto.jpg")); } catch(IOException e) { e.printStackTrace(); }
 
 			String list[] = null;
 			try { list = list(client); } catch(IOException e) { e.printStackTrace(); }

@@ -21,13 +21,16 @@ public abstract class Session implements Runnable {
 
     public void cleanup(){}
 
-    private void loop() throws InterruptedException {
+    private void loop() {
         try {
             String line;
             while((line = in.readLine()) != null){
                 singleOperation(line);
             }
         } catch (IOException e){
+            e.printStackTrace();
+        } catch (InterruptedException e){
+            System.err.println("INTERRUPTION HERE HAPPENED");
             e.printStackTrace();
         } finally {
             try {

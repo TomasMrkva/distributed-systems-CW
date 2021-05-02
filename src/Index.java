@@ -84,11 +84,12 @@ public class Index {
         synchronized (files){
             for(MyFile f : files) {
                 if(f.getName().equals(filename)){
-                    if(!f.exists()) {
-                        return false;
-                    } else {
+                    if(f.getOperation() == Operation.REMOVE_IN_PROGRESS) {
                         f.setOperation(Operation.REMOVE_COMPLETE);
                         return true;
+                    } else {
+                        System.out.println("THIS SHOULD NEVER HAPPEN!");
+                        return false;
                     }
                 }
             }
@@ -170,6 +171,16 @@ public class Index {
             return null;
         }
     }
+
+//    public MyFile getFile(String filename) {
+//        synchronized (files) {
+//            for (MyFile f : files){
+//                if (f.getName().equals(filename))
+//                    return f;
+//            }
+//        }
+//        return null;
+//    }
 
     public List<ControllerDstoreSession> getDstores(String filename){
         synchronized (files) {
