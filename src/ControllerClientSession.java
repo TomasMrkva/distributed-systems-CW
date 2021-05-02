@@ -37,7 +37,14 @@ public class ControllerClientSession extends Session {
 
     public void singleOperation(String message) throws InterruptedException {
         ControllerLogger.getInstance().messageReceived(socket, message);
+        if (controller.rebalance.get()){
+            controller.queue.add(new Controller.QueuedOperation(message, socket, this));
+        } else {
+            performOperation(message);
+        }
+    }
 
+    private void performOperation(String message) throws InterruptedException {
         String[] messageSplit = message.split(" ");
         switch (messageSplit[0]) {
             case "STORE" -> storeMessage(messageSplit);

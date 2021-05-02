@@ -1,8 +1,5 @@
 import java.io.*;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
 
 /**
@@ -10,14 +7,11 @@ import java.util.Arrays;
  */
 public class ControllerDstoreSession extends Session {
 
-    private int dstorePort;
-//    private BufferedReader in;
-    private PrintWriter out;
-//    private Socket receivingSocket;
-//    private Socket sendingSocket;
-    private Controller controller;
-    private Socket dstoreSocket;
-    public int numberOfFiles;
+    private final int dstorePort;
+    private final PrintWriter out;
+    private final Controller controller;
+    private final Socket dstoreSocket;
+    private int numberOfFiles;
 
     public ControllerDstoreSession(int dstorePort, Socket dstoreSocket, Controller controller, String message) throws IOException {
         super(dstoreSocket,message,"Dstore");
@@ -59,6 +53,10 @@ public class ControllerDstoreSession extends Session {
             case "ERROR_FILE_DOES_NOT_EXIST":
                 System.out.println(message);
                 break;
+            case "LIST":
+                controller.rebalanceFiles.put(dstorePort, Arrays.asList(messageSplit).subList(1, messageSplit.length));
+                controller.rebalanceLatch.countDown();
+                break;
             default:
                 System.out.println("Unrecognized command in controllerDstoreSession: " +  message);
 //                fileList(messageSplit);
@@ -75,7 +73,7 @@ public class ControllerDstoreSession extends Session {
         System.out.println("SOMETHING WRONG HAPPENED");
         File file = new File("errors.log");
         Writer fileWriter = new FileWriter(file,true);
-        fileWriter.write("1");
+        fileWriter.write("1\n");
         fileWriter.close();
         controller.dstoreClosedNotify(dstorePort);
         super.cleanup();

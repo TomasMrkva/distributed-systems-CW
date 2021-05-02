@@ -12,21 +12,12 @@ public class Index {
     }
 
     private final List<MyFile> files;
-//    private final Object lockStoreProgress;
-//    private final Object lockStoreFinish;
     private final Controller controller;
 
     public Index(Controller controller) {
         files = Collections.synchronizedList(new ArrayList<>());
-//        lockStoreProgress = new Object();
-//        lockStoreFinish = new Object();
         this.controller = controller;
-//        dstoreLock =  new Object();
     }
-
-    //    public void createFile(String filename) {
-//        files.put(filename, Collections.synchronizedList(new ArrayList<>()));
-//    }
 
     public boolean setStoreInProgress(String filename, int filesize){
         synchronized (files){
@@ -53,16 +44,6 @@ public class Index {
             return false;
         }
     }
-
-//    public boolean exists(String filename){
-//        synchronized (files){
-//            for(MyFile f : files){
-//                if(f.exists())
-//                    return true;
-//            }
-//            return false;
-//        }
-//    }
 
     public boolean setRemoveInProgress(String filename){
         synchronized (files){
@@ -98,60 +79,21 @@ public class Index {
     }
 
     public List<MyFile> getFiles(){
-        return files;
+        synchronized (files){
+            return files;
+        }
     }
 
     public boolean fileExists(String filename){
         synchronized (files){
             for (MyFile f : files){
-                if (f.getName().equals(filename))
-                    return true;
+                if (f.getName().equals(filename)){
+                    return f.exists();
+                }
             }
         }
         return false;
     }
-
-    public List<Integer> getNDstores(int n){
-        List<Integer> dstores = new ArrayList<>();
-        synchronized (files){
-            files.forEach(myFile -> myFile.getDstores().forEach(dstore -> dstores.add(dstore.getDstorePort())));
-        }
-        dstores.addAll(controller.dstoreSessions.keySet());
-        Map<Integer, Long> counts = dstores.stream().collect(Collectors.groupingBy(e -> e, Collectors.counting()));
-        counts = counts.entrySet().stream()
-                .sorted(Map.Entry.comparingByValue())
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
-                        (e1, e2) -> e1, LinkedHashMap::new));
-        List<Integer> result = new ArrayList<>(counts.keySet());
-        return result.stream().limit(n).collect(Collectors.toList());
-    }
-
-    public static void main(String[] args) throws IOException {
-        ControllerDstoreSession c1 = new ControllerDstoreSession(1,null,null,null);
-        ControllerDstoreSession c2 = new ControllerDstoreSession(2,null,null,null);
-        ControllerDstoreSession c3 = new ControllerDstoreSession(3,null,null,null);
-        ControllerDstoreSession c4 = new ControllerDstoreSession(4,null,null,null);
-        ControllerDstoreSession c5 = new ControllerDstoreSession(5,null,null,null);
-        ControllerDstoreSession c6 = new ControllerDstoreSession(6,null,null,null);
-        MyFile m1 = new MyFile("m1",1);
-        MyFile m2 = new MyFile("m2",1);
-        MyFile m3 = new MyFile("m3",1);
-        MyFile m4 = new MyFile("m4",1);
-        MyFile m5 = new MyFile("m5",1);
-        MyFile m6 = new MyFile("m6",1);
-        m1.addDstore(c1); m1.addDstore(c2); m1.addDstore(c3); m1.addDstore(c4);
-        m2.addDstore(c1); m1.addDstore(c3);
-        m3.addDstore(c4); m3.addDstore(c4);
-        m4.addDstore(c5); m4.addDstore(c1);
-        m5.addDstore(c2); m5.addDstore(c5); m5.addDstore(c1);
-        Index index = new Index(null);
-        MyFile[] files = {m1,m2,m3,m4,m5,m6};
-        index.files.addAll(Arrays.asList(files));
-        System.out.println("Result:");
-        System.out.println(Arrays.toString(index.getNDstores(3).toArray()));
-
-    }
-
 
     public void removeFile(String filename){
         synchronized (files){
@@ -172,16 +114,6 @@ public class Index {
         }
     }
 
-//    public MyFile getFile(String filename) {
-//        synchronized (files) {
-//            for (MyFile f : files){
-//                if (f.getName().equals(filename))
-//                    return f;
-//            }
-//        }
-//        return null;
-//    }
-
     public List<ControllerDstoreSession> getDstores(String filename){
         synchronized (files) {
             for(MyFile f : files) {
@@ -192,6 +124,42 @@ public class Index {
             return null;
         }
     }
+
+    public boolean readyToRebalance() {
+        synchronized (files) {
+            for(MyFile f : files){
+                if(f.inProgress())
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    public List<Integer> getRDstores(int r){
+        List<Integer> dstores = new ArrayList<>();
+        synchronized (files) {
+            files.forEach(myFile -> myFile.getDstores().forEach(dstore -> dstores.add(dstore.getDstorePort())));
+        }
+        dstores.addAll(controller.dstoreSessions.keySet());
+        Map<Integer, Long> counts = dstores.stream().collect(Collectors.groupingBy(e -> e, Collectors.counting()));
+        counts = counts.entrySet().stream()
+                .sorted(Map.Entry.comparingByValue())
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
+                        (e1, e2) -> e1, LinkedHashMap::new));
+        List<Integer> result = new ArrayList<>(counts.keySet());
+        System.out.println("RDstores: " + Arrays.toString(result.toArray()));
+        return result.stream().limit(r).collect(Collectors.toList());
+    }
+
+//    public MyFile getFile(String filename) {
+//        synchronized (files) {
+//            for (MyFile f : files){
+//                if (f.getName().equals(filename))
+//                    return f;
+//            }
+//        }
+//        return null;
+//    }
 
     public boolean addDstore(String filename, ControllerDstoreSession dstore) {
         synchronized (files){
@@ -240,5 +208,32 @@ public class Index {
             }
         }
     }
+
+    public static void main(String[] args) throws IOException {
+        ControllerDstoreSession c1 = new ControllerDstoreSession(1,null,null,null);
+        ControllerDstoreSession c2 = new ControllerDstoreSession(2,null,null,null);
+        ControllerDstoreSession c3 = new ControllerDstoreSession(3,null,null,null);
+        ControllerDstoreSession c4 = new ControllerDstoreSession(4,null,null,null);
+        ControllerDstoreSession c5 = new ControllerDstoreSession(5,null,null,null);
+        ControllerDstoreSession c6 = new ControllerDstoreSession(6,null,null,null);
+        MyFile m1 = new MyFile("m1",1);
+        MyFile m2 = new MyFile("m2",1);
+        MyFile m3 = new MyFile("m3",1);
+        MyFile m4 = new MyFile("m4",1);
+        MyFile m5 = new MyFile("m5",1);
+        MyFile m6 = new MyFile("m6",1);
+        m1.addDstore(c1); m1.addDstore(c2); m1.addDstore(c3); m1.addDstore(c4);
+        m2.addDstore(c1); m1.addDstore(c3);
+        m3.addDstore(c4); m3.addDstore(c4);
+        m4.addDstore(c5); m4.addDstore(c1);
+        m5.addDstore(c2); m5.addDstore(c5); m5.addDstore(c1);
+        Index index = new Index(null);
+        MyFile[] files = {m1,m2,m3,m4,m5,m6};
+        index.files.addAll(Arrays.asList(files));
+        System.out.println("Result:");
+        System.out.println(Arrays.toString(index.getRDstores(3).toArray()));
+
+    }
+
 
 }

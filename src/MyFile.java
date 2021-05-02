@@ -37,6 +37,10 @@ public class MyFile {
         return operation == null || operation == Index.Operation.REMOVE_COMPLETE;
     }
 
+    public synchronized boolean inProgress(){
+        return operation == Index.Operation.STORE_IN_PROGRESS || operation == Index.Operation.REMOVE_IN_PROGRESS;
+    }
+
     public boolean addDstore(ControllerDstoreSession controllerDstoreSession) {
         return dstores.add(controllerDstoreSession);
     }

@@ -22,26 +22,21 @@ public class Dstore {
 
     }
 
-//    final int PORT;
-//    final int CPORT;
     final int TIMEOUT;
     final String FILE_FOLDER;
     final Socket CSOCKET;
     final ServerSocket DSOCKET;
-//    final PrintWriter controllerMessages;
     final String FOLDER_NAME;
     final Set<FileRecord> files;
     final File dir;
 
+
     public Dstore(int port, int cport, int timeout, String file_folder) throws Exception {
-//        PORT = port;
-//        CPORT = cport;
         TIMEOUT = timeout;
         FILE_FOLDER = file_folder;
         CSOCKET = new Socket("localhost" ,cport);
         DSOCKET = new ServerSocket(port);
         FOLDER_NAME = file_folder;
-//        controllerMessages = new PrintWriter(CSOCKET.getOutputStream());
         DstoreLogger.init(Logger.LoggingType.ON_TERMINAL_ONLY, port);
         controllerCommunication();
         send("JOIN " + port, CSOCKET);
@@ -75,11 +70,18 @@ public class Dstore {
                     String[] lineSplit = line.split(" ");
                     switch (lineSplit[0]) {
                         case "REMOVE" -> removeFile(lineSplit);
+                        case "LIST" -> list();
                         default -> System.out.println("Unrecognised command " + line);
                     }
                 }
             } catch (IOException e) {e.printStackTrace();}
         }).start();
+    }
+
+    private void list() throws IOException {
+        StringBuilder fileList = new StringBuilder(Protocol.LIST_TOKEN);
+        files.forEach(fileRecord -> fileList.append(" ").append(fileRecord.getName()));
+        send(fileList.toString(), CSOCKET);
     }
 
     public void send(String message, Socket socket) throws IOException {
@@ -89,8 +91,6 @@ public class Dstore {
         DstoreLogger.getInstance().messageSent(socket, message);
     }
 
-
-
     private void run() throws IOException {
         while (true){
             Socket client = DSOCKET.accept();
@@ -98,7 +98,6 @@ public class Dstore {
             new Thread( () -> {
                 try {
                     BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
-//                    PrintWriter out = new PrintWriter(client.getOutputStream());
                     String line;
                     while ((line = in.readLine()) != null){
                         DstoreLogger.getInstance().messageReceived(client, line);
@@ -107,7 +106,6 @@ public class Dstore {
                         switch (lineSplit[0]) {
                             case "STORE" -> store(lineSplit, client);
                             case "LOAD_DATA" -> loadData(lineSplit, client);
-//                            case "REMOVE" -> removeFile(lineSplit,client);
                             default -> System.out.println("Unrecognised command " + line);
                         }
                     }
@@ -152,8 +150,7 @@ public class Dstore {
     private boolean storeAction(Socket client, String filename, int filesize) {
         Callable<byte[]> task = () -> {
             InputStream in = client.getInputStream();
-            byte[] bytes = in.readNBytes(filesize);
-            return bytes;
+            return in.readNBytes(filesize);
         };
         ExecutorService executor = Executors.newFixedThreadPool(1);
         FileRecord file = new FileRecord(filename, filesize);

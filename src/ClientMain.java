@@ -24,7 +24,7 @@ public class ClientMain {
 //		testClient(cport, timeout, downloadFolder);
 
 		// example to launch a number of concurrent clients, each doing the same operations
-		for (int i = 0; i < 50; i++) {
+		for (int i = 0; i < 100; i++) {
 			new Thread() {
 				public void run() {
 					testClient(4444, 5000, downloadFolder);
@@ -49,6 +49,15 @@ public class ClientMain {
 			try { client.store(new File("doggo.jpg")); } catch(IOException e) { e.printStackTrace(); }
 
 			try { client.store(new File("catto.jpg")); } catch(IOException e) { e.printStackTrace(); }
+
+			try { client.store(new File("gudfile.txt")); } catch(IOException e) { e.printStackTrace(); }
+
+			try { client.store(new File("a.txt")); } catch(IOException e) { e.printStackTrace(); }
+
+			try { client.store(new File("hemlo.txt")); } catch(IOException e) { e.printStackTrace(); }
+
+
+
 
 			String list[] = null;
 			try { list = list(client); } catch(IOException e) { e.printStackTrace(); }

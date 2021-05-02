@@ -2,25 +2,62 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Controller {
 
+    static class QueuedOperation {
+
+        private final String message;
+        private final Socket client;
+        private final ControllerClientSession session;
+
+        public QueuedOperation(String message, Socket client, ControllerClientSession session) {
+            this.message = message;
+            this.client = client;
+            this.session = session;
+        }
+
+        public Socket getClient() {
+            return client;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+
+        public ControllerClientSession getSession() {
+            return session;
+        }
+    }
+
     final public int R;
-    final public int CPORT;
     final public int TIMEOUT;
     final public int REBALANCE_PERIOD;
     final private ServerSocket ss;
     final public Index index;
+
+    public AtomicBoolean rebalance = new AtomicBoolean(false);
+    public BlockingQueue<QueuedOperation> queue = new LinkedBlockingQueue<>();
+    public ConcurrentHashMap<Integer, List<String>> rebalanceFiles;
+    public CountDownLatch rebalanceLatch;
+
+
     public ConcurrentHashMap<Integer,ControllerDstoreSession> dstoreSessions;
-    public final ConcurrentHashMap<String, CountDownLatch> waitingStoreAcks;
-    public final ConcurrentHashMap<String, CountDownLatch> waitingRemoveAcks;
+    public ConcurrentHashMap<String, CountDownLatch> waitingStoreAcks;
+    public ConcurrentHashMap<String, CountDownLatch> waitingRemoveAcks;
     public ConcurrentHashMap<String, Object> filenameKeys;
 
+    private final Object storeAcksLock = new Object();
+    private final Object removeAcksLock = new Object();
+    private final Object dstoresLock = new Object();
+    public final Object storeLock = new Object();
+    public final Object removeLock = new Object();
+
+//    public final IdMutexProvider MUTEX_PROVIDER;
+
     public Controller(int cport, int r, int timeout, int rebalance_period) throws Exception {
-        CPORT = cport;
         R = r;
         TIMEOUT = timeout;
         REBALANCE_PERIOD = rebalance_period;
@@ -29,8 +66,12 @@ public class Controller {
         waitingStoreAcks = new ConcurrentHashMap<>();
         waitingRemoveAcks = new ConcurrentHashMap<>();
         filenameKeys = new ConcurrentHashMap<>();
+        rebalanceFiles = new ConcurrentHashMap<>();
         index = new Index(this);
+//        MUTEX_PROVIDER = new IdMutexProvider();
         ControllerLogger.init(Logger.LoggingType.ON_TERMINAL_ONLY);
+        ScheduledExecutorService es = Executors.newSingleThreadScheduledExecutor();
+        es.scheduleAtFixedRate(this::rebalanceOperation, rebalance_period,rebalance_period,TimeUnit.MILLISECONDS);
         run();
     }
 
@@ -42,17 +83,10 @@ public class Controller {
                 try {
                     BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
                     String line = in.readLine(); //TODO: line can be null if user doesnt write anything
-                    String[] lineSplit = line.split(" ");
-                    if (lineSplit[0].equals(Protocol.JOIN_TOKEN)) {
-                        int dstorePort = Integer.parseInt(lineSplit[1]);
-                        ControllerDstoreSession cd = new ControllerDstoreSession(dstorePort,client,this, line);
-//                        dstoreSessions.put(dstorePort,cd);
-//                        System.out.println("Dstores: " + dstoreSessions.size());
-                        new Thread(cd).start();
+                    if (rebalance.get()) {
+                        queue.add(new QueuedOperation(line, client, null));
                     } else {
-//                        System.out.println(line);
-                        ControllerClientSession cc = new ControllerClientSession(client, this, line);
-                        new Thread(cc).start();
+                        createSessions(line, client);
                     }
                 } catch (IOException e) {
                     System.err.println(e.getMessage());
@@ -61,17 +95,30 @@ public class Controller {
         }
     }
 
+    private void createSessions(String line, Socket client) throws IOException {
+        String[] lineSplit = line.split(" ");
+        if (lineSplit[0].equals(Protocol.JOIN_TOKEN)) {
+            int dstorePort = Integer.parseInt(lineSplit[1]);
+            new Thread(new ControllerDstoreSession(dstorePort,client,this, line)).start();
+        } else {
+            new Thread(new ControllerClientSession(client, this, line)).start();
+        }
+    }
+
     public void dstoreClosedNotify(int dstorePort) {
 //        synchronized (Lock.DSTORE){
+        synchronized (dstoresLock) {
             dstoreSessions.remove(dstorePort);
             index.removeDstore(dstorePort);
             System.out.println("Dstores: " + dstoreSessions.mappingCount());
-//        }
+        }
     }
 
     public void addStoreAck(String filename, ControllerDstoreSession dstore) {
-//        synchronized (waitingStoreAcks){
-            waitingStoreAcks.compute(filename,(key, value) -> {
+        synchronized (storeAcksLock){
+            System.out.println("Store ack for : " + filename + " from " + dstore.getDstorePort());
+            System.out.println("Store hashmap contains : " + filename + "? " + waitingStoreAcks.containsKey(filename));
+            waitingStoreAcks.computeIfPresent(filename,(key, value) -> {
                 index.addDstore(filename, dstore);
                 if(value.getCount() == 1) {
                     value.countDown();
@@ -81,12 +128,15 @@ public class Controller {
                     return value;
                 }
             });
-//        }
+        }
     }
 
     public void addRemoveAck(String filename, ControllerDstoreSession dstore) {
-//        synchronized (waitingRemoveAcks){
-            waitingRemoveAcks.compute(filename,(key,value) -> {
+        synchronized (removeAcksLock){
+            System.out.println("Remove ack for : " + filename + " from " + dstore.getDstorePort());
+            System.out.println("Remove hashmap contains : " + filename + "? " + waitingRemoveAcks.containsKey(filename));
+
+            waitingRemoveAcks.computeIfPresent(filename,(key,value) -> {
                 index.removeDstore(filename, dstore);
                 if(value.getCount() == 1) {
                     value.countDown();
@@ -96,44 +146,85 @@ public class Controller {
                     return value;
                 }
             });
-//        }
+        }
     }
 
     //----Operations----
+    // synchronized (filenameKeys.computeIfAbsent(filename, k -> new Object())) {}
 
-    public void controllerRemoveOperation(String filename, ControllerClientSession session) throws InterruptedException {
-        synchronized (filenameKeys.computeIfAbsent(filename, k -> new Object())) {
-            if (dstoreSessions.mappingCount() < R) {
-                session.send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
-                return;
-            } else if (!index.setRemoveInProgress(filename)){
-                session.send(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
-                return;
+    public void rebalanceOperation() {
+        if(rebalance.compareAndSet(false, true)) {
+//            do {Thread.sleep(1000);}
+            while (waitingStoreAcks.mappingCount() != 0 && waitingRemoveAcks.mappingCount() != 0
+                    && index.readyToRebalance()) {};    //busy waiting for removes/stores
+            rebalanceLatch = new CountDownLatch(dstoreSessions.size());
+            try {
+                if(!rebalanceLatch.await(TIMEOUT, TimeUnit.MILLISECONDS)){
+                    System.out.println("(!) Waiting for LOAD_ACKS: TIMEOUT");
+
+    //                index.removeFile(filename);
+                } else {
+
+                }
+            } catch (InterruptedException e) { e.printStackTrace(); return;}
+            dstoreSessions.values().forEach(session -> session.sendMessageToDstore(Protocol.LIST_TOKEN));
+            for (ControllerDstoreSession session : dstoreSessions.values()) {
+                session.sendMessageToDstore(Protocol.LIST_TOKEN);
             }
-        }
-        List<ControllerDstoreSession> dstores;
-        try{ dstores = new ArrayList<>(index.getDstores(filename)); }
-        catch (NullPointerException e) { session.send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN); return;}
+            //TODO: this might not be too good
 
-        dstores.forEach( dstoreSession -> dstoreSession.sendMessageToDstore("REMOVE " + filename));
-
-        CountDownLatch latch = new CountDownLatch(R);
-        waitingRemoveAcks.put(filename, latch);
-        if(!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)){
-            //TODO: log an error here -> timeout reached
-            System.out.println("timeout reached");
-            waitingStoreAcks.remove(filename);
-            index.setRemoveComplete(filename);  //TODO: remove file in rebalance
-//                index.removeFile(filename);
         } else {
-            waitingStoreAcks.remove(filename);
-            index.removeFile(filename);
-            session.send(Protocol.REMOVE_COMPLETE_TOKEN);
+            System.out.println("Rebalance still in progress!");
         }
     }
 
-    public void controllerRemoveError(){
-        //TODO: here
+    private List<String> getMissingFiles() {
+        List<String> files = new ArrayList<>();
+        rebalanceFiles.values().forEach(files::addAll);
+        Map<String, Integer> countMap = new HashMap<>();
+
+        for (String item : files) {
+            if (countMap.containsKey(item))
+                countMap.put(item, countMap.get(item) + 1);
+            else
+                countMap.put(item, 1);
+        }
+        files.clear();
+        countMap.forEach((k,v) -> {
+            if(v.intValue() < R){
+                files.addAll(Collections.nCopies(R-v,k));   //TODO: finished here
+            }
+        });
+    }
+
+
+    public void controllerRemoveOperation(String filename, ControllerClientSession session) throws InterruptedException {
+        List<ControllerDstoreSession> dstores;
+        if (!index.setRemoveInProgress(filename)){
+            session.send(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
+            return;
+        }
+//        synchronized (filenameKeys.computeIfAbsent(filename, k -> new Object())) {
+            if (dstoreSessions.mappingCount() < R) {
+                session.send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
+                return;
+            }
+            try{ dstores = new ArrayList<>(index.getDstores(filename)); }
+            catch (NullPointerException e) { session.send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN); return;}
+            dstores.forEach( dstoreSession -> dstoreSession.sendMessageToDstore("REMOVE " + filename));
+            CountDownLatch latch = new CountDownLatch(R);
+            waitingRemoveAcks.put(filename, latch);
+            if(!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)){
+                System.out.println("(!) Waiting for REMOVE_ACKS: TIMEOUT");
+                waitingRemoveAcks.remove(filename);
+                index.setRemoveComplete(filename);  //TODO: remove file in rebalance
+//                index.removeFile(filename);
+            } else {
+                waitingRemoveAcks.remove(filename);
+                index.removeFile(filename);
+                session.send(Protocol.REMOVE_COMPLETE_TOKEN);
+            }
+//        }
     }
 
     public void controllerListOperation(ControllerClientSession session){
@@ -150,24 +241,26 @@ public class Controller {
         }
     }
 
-    public void controllerStoreOperation(String filename, int filesize, ControllerClientSession session) throws InterruptedException{
-        synchronized (filenameKeys.computeIfAbsent(filename, k -> new Object())) {
-            if (!index.setStoreInProgress(filename, filesize)) {
-                session.send(Protocol.ERROR_FILE_ALREADY_EXISTS_TOKEN);
-                return;
-            }
-            List<Integer> list = new ArrayList<>(index.getNDstores(R));
+    public void controllerStoreOperation(String filename, int filesize, ControllerClientSession session) throws InterruptedException {
+        if (!index.setStoreInProgress(filename, filesize)) {
+            session.send(Protocol.ERROR_FILE_ALREADY_EXISTS_TOKEN);
+            return;
+        }
+//        synchronized (filenameKeys.computeIfAbsent(filename, k -> new Object())) {
+            List<Integer> list = new ArrayList<>(index.getRDstores(R));
+            System.out.println("SELECTED DSTORES: " + Arrays.toString(list.toArray()));
             if(list.size() < R) {
                 session.send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
+                return;
             }
             StringBuilder output = new StringBuilder(Protocol.STORE_TO_TOKEN);
-            list.forEach( port ->  output.append(" ").append(port));
+            list.forEach(port -> output.append(" ").append(port));
             System.out.println("Selected dstores: " + output);
             CountDownLatch latch = new CountDownLatch(R);
             waitingStoreAcks.put(filename, latch);
             session.send(output.toString());
-            if(!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)){
-                //TODO: log an error here -> timeout reached
+            if (!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)) {
+                System.out.println("(!) Waiting for STORE_ACKS: TIMEOUT");
                 waitingStoreAcks.remove(filename);
                 System.out.println("timeout reached");
                 index.removeFile(filename);
@@ -176,16 +269,19 @@ public class Controller {
                 index.setStoreComplete(filename);
                 session.send(Protocol.STORE_COMPLETE_TOKEN);
             }
-        }
+//        }
     }
 
     public void controllerLoadOperation(String filename, ControllerClientSession session){
         if (!index.fileExists(filename)){
             session.send(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
             return;
-        } else if (dstoreSessions.mappingCount() < R){
-            session.send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
-        } else {
+        }
+//        synchronized (filenameKeys.computeIfAbsent(filename, k -> new Object())) {
+            if (dstoreSessions.mappingCount() < R){
+                session.send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
+                return;
+            }
             List<ControllerDstoreSession> dstoreSessions;
             try{dstoreSessions = new ArrayList<>(index.getDstores(filename));}
             catch (NullPointerException e) {session.send(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN); return;}
@@ -196,18 +292,18 @@ public class Controller {
             int dstorePort = dstoreSessions.get(0).getDstorePort();
             session.loadCounter.add(dstorePort);
             session.send(Protocol.LOAD_FROM_TOKEN + " " + dstorePort + " " + index.getFileSize(filename));
-        }
+//        }
     }
 
     public void controllerReloadOperation(String filename, ControllerClientSession session) {
-        List<ControllerDstoreSession> dstoreSessions;
-        try { dstoreSessions = new ArrayList<>(index.getDstores(filename)); }
-        catch (NullPointerException e) {  session.send(Protocol.ERROR_LOAD_TOKEN); return; }
-        if (dstoreSessions.isEmpty()) {
-            session.send(Protocol.ERROR_LOAD_TOKEN);
-            return;
-        }
 //        synchronized (filenameKeys.computeIfAbsent(filename, k -> new Object())) {
+            List<ControllerDstoreSession> dstoreSessions;
+            try { dstoreSessions = new ArrayList<>(index.getDstores(filename)); }
+            catch (NullPointerException e) {  session.send(Protocol.ERROR_LOAD_TOKEN); return; }
+            if (dstoreSessions.isEmpty()) {
+                session.send(Protocol.ERROR_LOAD_TOKEN);
+                return;
+            }
             List<Integer> dstorePorts = new ArrayList<>();
             dstoreSessions.forEach(dstore -> dstorePorts.add(dstore.getDstorePort()));
             dstorePorts.removeAll(session.loadCounter);

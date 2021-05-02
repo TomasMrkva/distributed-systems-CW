@@ -29,12 +29,13 @@ public abstract class Session implements Runnable {
             }
         } catch (IOException e){
             e.printStackTrace();
-        } catch (InterruptedException e){
-            System.err.println("INTERRUPTION HERE HAPPENED");
+        } catch (InterruptedException e) {
+            System.out.println("SOMETHING WRONG HAPPENED");
             e.printStackTrace();
         } finally {
             try {
                 cleanup();
+                System.out.println("CLOSING CONNECTION: " + connection.getPort());
                 connection.close();
             }
             catch (IOException e) { e.printStackTrace(); }
