@@ -1,6 +1,8 @@
-import java.io.IOException;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
 
 /**
@@ -69,8 +71,12 @@ public class ControllerDstoreSession extends Session {
     }
 
     @Override
-    public void cleanup() {
+    public void cleanup() throws IOException {
         System.out.println("SOMETHING WRONG HAPPENED");
+        File file = new File("errors.log");
+        Writer fileWriter = new FileWriter(file,true);
+        fileWriter.write("1");
+        fileWriter.close();
         controller.dstoreClosedNotify(dstorePort);
         super.cleanup();
     }

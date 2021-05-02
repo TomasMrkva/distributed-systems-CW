@@ -70,7 +70,7 @@ public class Controller {
     }
 
     public void addStoreAck(String filename, ControllerDstoreSession dstore) {
-        synchronized (waitingStoreAcks){
+//        synchronized (waitingStoreAcks){
             waitingStoreAcks.compute(filename,(key, value) -> {
                 index.addDstore(filename, dstore);
                 if(value.getCount() == 1) {
@@ -81,11 +81,11 @@ public class Controller {
                     return value;
                 }
             });
-        }
+//        }
     }
 
     public void addRemoveAck(String filename, ControllerDstoreSession dstore) {
-        synchronized (waitingRemoveAcks){
+//        synchronized (waitingRemoveAcks){
             waitingRemoveAcks.compute(filename,(key,value) -> {
                 index.removeDstore(filename, dstore);
                 if(value.getCount() == 1) {
@@ -96,38 +96,39 @@ public class Controller {
                     return value;
                 }
             });
-        }
+//        }
     }
 
     //----Operations----
 
     public void controllerRemoveOperation(String filename, ControllerClientSession session) throws InterruptedException {
-        if(dstoreSessions.mappingCount() < R) {
-            session.send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
-        } else if (!index.setRemoveInProgress(filename)) {
-            session.send(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
-        } else {
-            synchronized (filenameKeys.computeIfAbsent(filename, k -> new Object())){
-                List<ControllerDstoreSession> dstores;
-                try{ dstores = new ArrayList<>(index.getDstores(filename)); }
-                catch (NullPointerException e) { session.send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN); return;}
-
-                dstores.forEach( dstoreSession -> dstoreSession.sendMessageToDstore("REMOVE " + filename));
-
-                CountDownLatch latch = new CountDownLatch(R);
-                waitingRemoveAcks.put(filename, latch);
-                if(!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)){
-                    //TODO: log an error here -> timeout reached
-                    System.out.println("timeout reached");
-                    index.setRemoveComplete(filename);  //TODO: remove file in rebalance
-//                index.removeFile(filename);
-                    waitingStoreAcks.remove(filename);
-                } else {
-                    index.removeFile(filename);
-                    waitingStoreAcks.remove(filename);
-                    session.send(Protocol.REMOVE_COMPLETE_TOKEN);
-                }
+        synchronized (filenameKeys.computeIfAbsent(filename, k -> new Object())) {
+            if (dstoreSessions.mappingCount() < R) {
+                session.send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
+                return;
+            } else if (!index.setRemoveInProgress(filename)){
+                session.send(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
+                return;
             }
+        }
+        List<ControllerDstoreSession> dstores;
+        try{ dstores = new ArrayList<>(index.getDstores(filename)); }
+        catch (NullPointerException e) { session.send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN); return;}
+
+        dstores.forEach( dstoreSession -> dstoreSession.sendMessageToDstore("REMOVE " + filename));
+
+        CountDownLatch latch = new CountDownLatch(R);
+        waitingRemoveAcks.put(filename, latch);
+        if(!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)){
+            //TODO: log an error here -> timeout reached
+            System.out.println("timeout reached");
+            waitingStoreAcks.remove(filename);
+            index.setRemoveComplete(filename);  //TODO: remove file in rebalance
+//                index.removeFile(filename);
+        } else {
+            waitingStoreAcks.remove(filename);
+            index.removeFile(filename);
+            session.send(Protocol.REMOVE_COMPLETE_TOKEN);
         }
     }
 
@@ -150,31 +151,30 @@ public class Controller {
     }
 
     public void controllerStoreOperation(String filename, int filesize, ControllerClientSession session) throws InterruptedException{
-        if (!index.setStoreInProgress(filename, filesize)) {
-            session.send(Protocol.ERROR_FILE_ALREADY_EXISTS_TOKEN);
-            return;
-        }
-        List<Integer> list = new ArrayList<>(index.getNDstores(R));
-        if(list.size() < R) {
-            session.send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
-        } else {
-            synchronized (filenameKeys.computeIfAbsent(filename, k -> new Object())){
-                StringBuilder output = new StringBuilder(Protocol.STORE_TO_TOKEN);
-                list.forEach( port ->  output.append(" ").append(port));
-                System.out.println("Selected dstores: " + output);
-                CountDownLatch latch = new CountDownLatch(R);
-                waitingStoreAcks.put(filename, latch);
-                session.send(output.toString());
-                if(!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)){
-                    //TODO: log an error here -> timeout reached
-                    System.out.println("timeout reached");
-                    index.removeFile(filename);
-                    waitingStoreAcks.remove(filename);
-                } else {
-                    index.setStoreComplete(filename);
-                    waitingStoreAcks.remove(filename);
-                    session.send(Protocol.STORE_COMPLETE_TOKEN);
-                }
+        synchronized (filenameKeys.computeIfAbsent(filename, k -> new Object())) {
+            if (!index.setStoreInProgress(filename, filesize)) {
+                session.send(Protocol.ERROR_FILE_ALREADY_EXISTS_TOKEN);
+                return;
+            }
+            List<Integer> list = new ArrayList<>(index.getNDstores(R));
+            if(list.size() < R) {
+                session.send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
+            }
+            StringBuilder output = new StringBuilder(Protocol.STORE_TO_TOKEN);
+            list.forEach( port ->  output.append(" ").append(port));
+            System.out.println("Selected dstores: " + output);
+            CountDownLatch latch = new CountDownLatch(R);
+            waitingStoreAcks.put(filename, latch);
+            session.send(output.toString());
+            if(!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)){
+                //TODO: log an error here -> timeout reached
+                waitingStoreAcks.remove(filename);
+                System.out.println("timeout reached");
+                index.removeFile(filename);
+            } else {
+                waitingStoreAcks.remove(filename);
+                index.setStoreComplete(filename);
+                session.send(Protocol.STORE_COMPLETE_TOKEN);
             }
         }
     }
