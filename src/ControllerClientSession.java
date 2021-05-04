@@ -45,6 +45,10 @@ public class ControllerClientSession extends Session {
     }
 
     private void performOperation(String message) throws InterruptedException {
+        if(controller.dstoreSessions.size() < controller.R){
+            send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
+            return;
+        }
         String[] messageSplit = message.split(" ");
         switch (messageSplit[0]) {
             case "STORE" -> storeMessage(messageSplit);

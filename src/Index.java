@@ -140,15 +140,17 @@ public class Index {
         synchronized (files) {
             files.forEach(myFile -> myFile.getDstores().forEach(dstore -> dstores.add(dstore.getDstorePort())));
         }
-        dstores.addAll(controller.dstoreSessions.keySet());
-        Map<Integer, Long> counts = dstores.stream().collect(Collectors.groupingBy(e -> e, Collectors.counting()));
-        counts = counts.entrySet().stream()
-                .sorted(Map.Entry.comparingByValue())
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
-                        (e1, e2) -> e1, LinkedHashMap::new));
-        List<Integer> result = new ArrayList<>(counts.keySet());
-        System.out.println("RDstores: " + Arrays.toString(result.toArray()));
-        return result.stream().limit(r).collect(Collectors.toList());
+            dstores.addAll(controller.dstoreSessions.keySet());
+            Collections.shuffle(dstores);
+            Map<Integer, Long> counts = dstores.stream().collect(Collectors.groupingBy(e -> e, Collectors.counting()));
+            counts = counts.entrySet().stream()
+                    .sorted(Map.Entry.comparingByValue())
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
+                            (e1, e2) -> e1, LinkedHashMap::new));
+            List<Integer> result = new ArrayList<>(counts.keySet());
+            System.out.println("RDstores: " + Arrays.toString(result.toArray()));
+            return result.stream().limit(r).collect(Collectors.toList());
+//        }
     }
 
 //    public MyFile getFile(String filename) {

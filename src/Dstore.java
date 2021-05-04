@@ -37,7 +37,7 @@ public class Dstore {
         CSOCKET = new Socket("localhost" ,cport);
         DSOCKET = new ServerSocket(port);
         FOLDER_NAME = file_folder;
-        DstoreLogger.init(Logger.LoggingType.ON_TERMINAL_ONLY, port);
+        DstoreLogger.init(Logger.LoggingType.ON_FILE_AND_TERMINAL, port);
         controllerCommunication();
         send("JOIN " + port, CSOCKET);
         files = ConcurrentHashMap.newKeySet();
