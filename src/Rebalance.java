@@ -98,8 +98,7 @@ public class Rebalance {
     }
 
     private void evenFilesDistribution() {
-        //TODO: start spreading files
-
+        //TODO: start spreading files maybe use hashmaps for not full and full dstores
         dstoreFiles.forEach((k, v) -> {
             if (v.size() < floor)
                 freeSpaces.push(new Integer[]{k, (int) ceil - v.size()});
@@ -114,7 +113,6 @@ public class Rebalance {
             freeSpaces.forEach((newDS, capacity) -> {
                 if (capacity > files.size()) {
                     capacity = capacity - files.size();
-
                 }
             });
         });
@@ -122,6 +120,7 @@ public class Rebalance {
         filesToMove.entrySet().forEach(entry -> {
             Integer port = entry.getKey();
             List<String> files = entry.getValue();
+            String msg = filesToAdd.get(port);
             while (!files.isEmpty()) {
                 Integer[] top = freeSpaces.peek();
                 int destinationPort = top[0];
@@ -129,9 +128,13 @@ public class Rebalance {
                 if (freeSpace > files.size()) {
 //                    freeSpaces.pop(); freeSpaces.push(new Integer[]{destinationPort,freeSpace - files.size()});
                     top[1] = freeSpace - files.size();
-                    String[] msg = messages.get(destinationPort);
                     for (String s : files) {
-                        msg[0] = msg[0] + " " + s;  //TODO: make sure that the files are not duplicate
+                        msg = msg + " " + s + " " + destinationPort;  //TODO: make sure that the files are not duplicate
+                    }
+                    files.clear();
+                } else if (freeSpace == files.size()) {
+                    for (String s : files) {
+                        msg = msg + " " + s + " " + destinationPort;  //TODO: make sure that the files are not duplicate
                     }
                 }
             }
