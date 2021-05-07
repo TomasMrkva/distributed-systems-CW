@@ -273,7 +273,6 @@ public class Controller {
 //            }
 //        });
 
-
     public void controllerRemoveOperation(String filename, ControllerClientSession session) throws InterruptedException {
         List<ControllerDstoreSession> dstores;
         if (!index.setRemoveInProgress(filename)){
