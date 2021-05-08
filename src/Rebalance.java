@@ -1,16 +1,21 @@
+import com.sun.security.jgss.GSSUtil;
+
 import java.util.*;
+
+import static java.util.Comparator.comparingInt;
+import static java.util.Map.Entry.comparingByValue;
+import static java.util.stream.Collectors.toMap;
 
 public class Rebalance {
 
     private final HashMap<Integer, List<String>> dstoreFiles;
-    private Map<String, List<Integer>> filesAllocation;   // filenames -> [Dstore_Ports]
+    private final Map<String, List<Integer>> filesAllocation;   // filenames -> [Dstore_Ports]
 
-    private final HashMap<Integer, StringBuilder> filesToRemove, filesToAdd;
-    private final HashMap<Integer, List<String>> overLimitFiles;
-    private final HashMap<Integer, List<String>> underLimitFiles;
-    private final HashMap<Integer, List<String>> correctFilesSize;
-    private final HashMap<Integer, List<String>> floorLimitFiles;
-    private final HashMap<String, Integer> defaultDstores;
+    private final HashMap<Integer, StringBuilder> filesToRemove, filesToSend;
+    private final HashMap<Integer, List<String>> overLimitFiles,correctFilesSize;
+    private Map<Integer, List<String>> underLimitFiles;
+    private final HashMap<String, Integer> masterDstores;
+
     private final Controller controller;
     private final Index index;
     private final int R;
@@ -21,11 +26,10 @@ public class Rebalance {
         overLimitFiles = new HashMap<>();
         underLimitFiles = new HashMap<>();
         correctFilesSize = new HashMap<>();
-        floorLimitFiles = new HashMap<>();
-        filesToAdd = new HashMap<>();
+        filesToSend = new HashMap<>();
         filesToRemove = new HashMap<>();
         filesAllocation = new HashMap<>();
-        defaultDstores = new HashMap<>();
+        masterDstores = new HashMap<>();
         this.controller = controller;
         this.index = index;
         this.R = R;
@@ -43,10 +47,10 @@ public class Rebalance {
     public void runRebalance() {
         indexFilter();
         extraFilesFilter();
-        replicateFiles();
+//        replicateFiles();
         computeLimit();
         divideDstores();
-        evenFilesDistribution();
+//        distriButeOverLimit();
     }
 
     private void formatRemoveMessages() {
@@ -57,7 +61,7 @@ public class Rebalance {
     }
 
     private void formatAddMessages() {
-        filesToAdd.forEach( (port,msg) -> {
+        filesToSend.forEach( (port, msg) -> {
             String[] addFiles = msg.toString().split(" ");
             Map<String, List<Integer>> map = new HashMap<>();
             for (int i = 0; i < addFiles.length; i += 2){
@@ -67,84 +71,87 @@ public class Rebalance {
                 destPorts.add(destPort);
                 map.put(filename, destPorts);
             }
-            StringBuilder newMsg = new StringBuilder(map.size() + " ");
+            StringBuilder newMsg = new StringBuilder();
             map.forEach((filename, ports) -> {
+                newMsg.append(ports.size()).append(" ");
                 newMsg.append(filename).append(" ");
                 ports.forEach( destPort -> newMsg.append(destPort).append(" "));
             });
-            filesToAdd.put(port, newMsg);
+            filesToSend.put(port, newMsg);
         });
     }
 
-//    public HashMap<Integer, String> getRemoveMessages() {
-//        return filesToRemove;
-//    }
-//
-//    public HashMap<Integer, String> getAddMessages() {
-//        return filesToAdd;
-//    }
-
-    private void updateFilesToRemove(int port, String message) {
+    private void updateFilesToRemove(int port, String filename) {
         StringBuilder msg = filesToRemove.getOrDefault(port, new StringBuilder());
-        msg.append(message).append(" ");    //saves the name of files to remove
+        msg.append(filename).append(" ");    //saves the name of files to remove
         filesToRemove.put(port, msg);
     }
 
-    private void updateFilesToAdd(int port, String message) {
-        StringBuilder msg = filesToAdd.getOrDefault(port, new StringBuilder());
-        msg.append(message).append(" ");   //saves the name of files to remove
-        filesToAdd.put(port, msg);
+    private void updateFilesToSend(int sender, String filename, Integer receiver) {
+//        List<Integer> ports = filesAllocation.get(filename);
+//        ports.add(receiver);
+//        filesAllocation.put(filename,ports);
+
+//        List<String> files = dstoreFiles.get(receiver);
+//        files.add(filename);
+//        dstoreFiles.put(receiver,files);
+
+        StringBuilder msg = filesToSend.getOrDefault(sender, new StringBuilder());
+        msg.append(filename).append(" ").append(receiver).append(" ");   //saves the name of files to remove
+        filesToSend.put(sender, msg);
     }
 
-    private void removeFile(String filename) {
+    private void removeFileEverywhere(String filename) {
         List<Integer> dstores = filesAllocation.remove(filename);
         for (Integer port : dstores) {
             List<String> files = new ArrayList<>(dstoreFiles.get(port));
             files.remove(filename);
             dstoreFiles.put(port, files);   //updates the dstore with removed file
 
-            updateFilesToRemove(port, filename);
-//            String msg = filesToRemove.getOrDefault(port, "");
-//            msg = msg + " " + filename;   //saves the name of files to remove
-//            filesToRemove.put(port, msg);
+            StringBuilder msg = filesToRemove.getOrDefault(port, new StringBuilder());
+            msg.append(filename).append(" ");    //saves the name of files to remove
+            filesToRemove.put(port, msg);
         }
-    }
-
-    private void removeFile(String filename, int port) {
-        List<Integer> ports = new ArrayList<>(filesAllocation.get(filename));
-        ports.remove(Integer.valueOf(port));
-        filesAllocation.put(filename, ports);
-
-        List<String> files = new ArrayList<>(dstoreFiles.get(port));
-        files.remove(filename);
-        dstoreFiles.put(port,files);
-
-        updateFilesToRemove(port, filename);
-//        String msg = filesToRemove.getOrDefault(port, "");
-//        msg = msg + " " + filename;   //saves the name of files to remove
-//        filesToRemove.put(port, msg);
     }
 
     private void indexFilter() {
-        List<MyFile> filesToRemove = new ArrayList<>();
-//        Iterator<MyFile> it = controller.index.getFiles().iterator();
+        List<String> filesToRemove = new ArrayList<>();
+        List<String> indexFiles = new ArrayList<>();
         Iterator<MyFile> it = index.getFiles().iterator();
         while(it.hasNext()) {
             MyFile file = it.next();
+            indexFiles.add(file.getName());
             if(file.getOperation() == Index.Operation.REMOVE_COMPLETE || file.getOperation() == Index.Operation.REMOVE_IN_PROGRESS) {
-                filesToRemove.add(file);
+                filesToRemove.add(file.getName());
                 it.remove();
             }
         }
-        filesToRemove.forEach( file -> removeFile(file.getName())); //removes files from index
+        filesAllocation.forEach( (filename, dstores) -> {
+            if (!indexFiles.contains(filename)){
+                filesToRemove.add(filename);
+            }
+        });
+        filesToRemove.forEach(this::removeFileEverywhere);
     }
 
     private void extraFilesFilter() {
         filesAllocation.forEach( (filename, dstores) -> {
             if (dstores.size() > R) {
                 List<Integer> tail = dstores.subList(R, dstores.size());
-                for (Integer port : tail) {
-                    removeFile(filename, port);
+                Iterator<Integer> it = tail.iterator();
+                while (it.hasNext()){
+//                for (Integer port : tail) {
+                    Integer port = it.next();
+//                    List<Integer> ports = filesAllocation.get(filename);
+//                    System.out.println("BEFORE REMOVE: " + ports);
+                    it.remove();
+//                    System.out.println("AFTER REMOVE: " + ports);
+                    filesAllocation.put(filename,filesAllocation.get(filename));
+
+                    List<String> files = dstoreFiles.get(port);
+                    files.remove(filename);
+                    dstoreFiles.put(port,files);
+                    updateFilesToRemove(port,filename);
                 }
             }
         });
@@ -158,69 +165,105 @@ public class Rebalance {
 
     private void divideDstores() {
         dstoreFiles.forEach( (k, v) -> {
-            if (v.size() < floor)
+            if (v.size() <= floor)
                 underLimitFiles.put(k,v);
             else if (v.size() > ceil) {
                 overLimitFiles.put(k,v);
-            } else if (v.size() == floor){
-                floorLimitFiles.put(k,v);
             } else {
                 correctFilesSize.put(k,v);
             }
 
         });
+        dstoreFiles.clear();
     }
 
     private void findDefaultDstores() {
-        List<Integer> usedDstores = new ArrayList<>();
-        filesAllocation.forEach( (file, dstores) -> {
-            Random r = new Random();
-            defaultDstores.put(file, dstores.get(r.nextInt(dstores.size())));
+        Map<String, List<Integer>> sorted = filesAllocation.entrySet().stream()
+                .sorted(comparingInt(e -> e.getValue().size()))
+                .collect(toMap(
+                        Map.Entry::getKey,
+                        Map.Entry::getValue,
+                        (a, b) -> { throw new AssertionError(); },
+                        LinkedHashMap::new
+                ));
+
+        System.out.println("SORTED MAP ");
+        sorted.entrySet().forEach(entry -> {
+            System.out.println(entry.getKey() + ":" + entry.getValue());
+        });
+
+        Set<Integer> usedDstores = new HashSet<>();
+        sorted.forEach((filename, ports) -> {
+            for (int i=0; i < ports.size(); i++) {
+                int currentPort = ports.get(i);
+                if (!usedDstores.contains(currentPort) || i == ports.size()-1) {
+                    usedDstores.add(currentPort);
+                    masterDstores.put(filename,currentPort);
+                    break;
+                }
+            }
         });
     }
 
-    private void replicateFiles() {
+    private void sortUnderLimit() {
+        underLimitFiles = underLimitFiles.entrySet().stream()
+                .sorted(comparingInt(e -> e.getValue().size()))
+                .collect(toMap(
+                        Map.Entry::getKey,
+                        Map.Entry::getValue,
+                        (a, b) -> { throw new AssertionError(); },
+                        LinkedHashMap::new));
+    }
+
+    private void replicateFiles2() {
+        sortUnderLimit();
+        int max = 0;
+        for ( List<String> files : underLimitFiles.values()) {
+            if (files.size() > max)
+                max = files.size();
+        }
+        int finalMax = max;
         filesAllocation.forEach( (filename, dstores) -> {
-            while(dstores.size() < R){
+            while (dstores.size() < R) {
                 boolean found = false;
-                Iterator<Map.Entry<Integer, List<String>>> it1 = underLimitFiles.entrySet().iterator();
-                while (it1.hasNext()) {
-                    int destinationPort = it1.next().getKey();
-                    if (!dstores.contains(destinationPort)) {
+                Iterator<Map.Entry<Integer, List<String>>> it = underLimitFiles.entrySet().iterator();
+                while (it.hasNext()) {
+                    Map.Entry<Integer, List<String>> entry = it.next();
+                    int destPort = entry.getKey();
+                    List<String> destinationFiles = entry.getValue();
+                    if (!dstores.contains(destPort)) {
                         found = true;
-                        updateFilesToAdd(defaultDstores.get(filename), filename + " " + destinationPort);
-                        List<String> destinationFiles = new ArrayList<>(dstoreFiles.get(destinationPort));
+//                        updateFilesToSend(masterDstores.get(filename), filename, destPort);
+                        StringBuilder msg = filesToSend.getOrDefault(masterDstores.get(filename), new StringBuilder());
+                        msg.append(filename).append(" ").append(destPort).append(" ");   //saves the name of files to remove
+                        filesToSend.put(masterDstores.get(filename), msg);
                         destinationFiles.add(filename);
-                        dstoreFiles.put(destinationPort, destinationFiles);
-                        dstores.add(destinationPort);
-                        if (destinationFiles.size() == floor) {
-                           it1.remove();
-                           floorLimitFiles.put(destinationPort,destinationFiles);
+//                        dstoreFiles.put(destPort, destinationFiles);
+                        dstores.add(destPort);
+//                        filesAllocation.put(filename,dstores);
+                        if (destinationFiles.size() == ceil) {
+                            correctFilesSize.put(destPort, destinationFiles);
+                            it.remove();
+                        } else if (destinationFiles.size() == finalMax){
+                            it.remove();
+                            underLimitFiles.put(destPort,destinationFiles);
+                        } else if (destinationFiles.size() == floor){
+                            it.remove();
+                            underLimitFiles.put(destPort,destinationFiles);
                         }
                         break;
                     }
                 }
-                if (found) continue;
-                Iterator<Map.Entry<Integer, List<String>>> it2 = floorLimitFiles.entrySet().iterator();
-                while (it2.hasNext()) {
-                    int destinationPort = it2.next().getKey();
-                    if (!dstores.contains(destinationPort)) {
-                        updateFilesToAdd(defaultDstores.get(filename), filename + " " + destinationPort);
-                        List<String> destinationFiles = new ArrayList<>(dstoreFiles.get(destinationPort));
-                        destinationFiles.add(filename);
-                        dstoreFiles.put(destinationPort, destinationFiles);
-                        dstores.add(destinationPort);
-                        correctFilesSize.put(destinationPort,destinationFiles);
-                        it2.remove();
-                        break;
-                    }
+                if(!found) {
+                    System.out.println("ERROR WHILE REPLICATING FILES");
+                    break;
                 }
             }
-            filesAllocation.put(filename, dstores);
         });
+        filesAllocation.clear();
     }
 
-    private void evenFilesDistribution() {
+    private void distributeFiles() {
         Iterator<Map.Entry<Integer, List<String>>> it = overLimitFiles.entrySet().iterator();
         while ( it.hasNext() ) {
             Map.Entry<Integer, List<String>> currentPair = it.next();
@@ -229,10 +272,6 @@ public class Rebalance {
 
             while (originFiles.size() > ceil) {
                 String filename = originFiles.remove(0);
-                if (!underLimitFiles.isEmpty()) {
-                    underLimitFiles.putAll(floorLimitFiles);
-                    floorLimitFiles.clear();
-                }
                 Map.Entry<Integer, List<String>> selectedEntry = null;
                 for (Map.Entry<Integer, List<String>> entry : underLimitFiles.entrySet()){
                     if (!entry.getValue().contains(filename)){
@@ -241,26 +280,72 @@ public class Rebalance {
                     }
                 }
                 if (selectedEntry == null) {
-                    //TODO: exception here
-                    System.err.println("ERROR WHILE DISTRIBUTING FILES DURING REBALANCE");
-                    break;
+                    originFiles.add(filename);
+                    continue;
                 }
                 int destPort = selectedEntry.getKey();
                 List<String> destFiles = selectedEntry.getValue();
-                selectedEntry.getValue().add(filename);
-                updateFilesToAdd(originPort,  filename + " " + destPort);
+                destFiles.add(filename);
+                updateFilesToSend(masterDstores.get(filename), filename, destPort);
                 updateFilesToRemove(originPort, filename);
-                int freeSpaces = ceil - selectedEntry.getValue().size();
-                if (freeSpaces == 0) {
-                    underLimitFiles.remove(destPort);
+                underLimitFiles.remove(destPort);
+                if (destFiles.size() == ceil) {
                     correctFilesSize.put(destPort, destFiles);
+                } else {
+                    underLimitFiles.put(destPort,destFiles);
                 }
             }
             correctFilesSize.put(originPort,originFiles);
             it.remove();
         }
-        correctFilesSize.putAll(underLimitFiles);
-//        correctFilesSize.putAll(floorLimitFiles);
+        underLimitFiles.forEach( (k,v) -> { if (v.size() == floor) correctFilesSize.put(k,v); } );
+        underLimitFiles.entrySet().removeIf( entries -> entries.getValue().size() == floor);
+        if(!underLimitFiles.isEmpty()) {
+            System.err.println("UNDER LIMIT FILES CALLED");
+            fillUnderLimitFiles();
+        }
+    }
+
+    private void fillUnderLimitFiles() {
+        HashMap<Integer, List<String>> ceilFiles = new HashMap<>();
+        correctFilesSize.forEach((k, v) -> {
+            if (v.size() == ceil) ceilFiles.put(k, v);
+        });
+
+        Iterator<Map.Entry<Integer, List<String>>> it = underLimitFiles.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<Integer, List<String>> currentPair = it.next();       // underLimitFile entry
+            Integer destPort = currentPair.getKey();                        // underLimit -> (destPort, destFiles)
+            List<String> destFiles = currentPair.getValue();
+            while (destFiles.size() < floor) {
+                for (Map.Entry<Integer, List<String>> entry : ceilFiles.entrySet()) {       // ceilingFiles entry
+                    int originPort = entry.getKey();                                        // ceilingFiles -> (originPort, originFiles)
+                    List<String> originFiles = entry.getValue();
+                    boolean found = false;
+                    Iterator<String> iter = originFiles.iterator();                        // List<OriginFiles> it
+                    while (iter.hasNext()) {
+                        String filename = iter.next();                                      // filename it.get(next);
+                        if (!destFiles.contains(filename)) {                                // underLimit -> (destPort,destFiles).contains(filename)
+//                            System.out.println("BEFORE: " + Arrays.toString(originFiles.toArray()));
+                            destFiles.add(filename);                                        // underLimit (destFiles).add(filename)
+                            updateFilesToSend(masterDstores.get(filename), filename, destPort);
+                            updateFilesToRemove(originPort, filename);
+                            underLimitFiles.remove(destPort);
+//                            dstoreFiles.put(destPort,destFiles);
+                            iter.remove();                                                  //originFiles.remove(filename)
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (found) {
+                        System.out.println("AFTER: " + Arrays.toString(originFiles.toArray()));
+                        correctFilesSize.put(originPort, originFiles);
+                        break;
+                    }
+                }
+                correctFilesSize.put(destPort, destFiles);
+            }
+        }
     }
 
     private void printState() {
@@ -275,7 +360,7 @@ public class Rebalance {
         });
 
         System.out.println("[DEFAULT DSTORES]");
-        defaultDstores.entrySet().forEach(entry -> {
+        masterDstores.entrySet().forEach(entry -> {
             System.out.println(entry.getKey() + " " + entry.getValue());
         });
 
@@ -284,8 +369,8 @@ public class Rebalance {
             System.out.println(entry.getKey() + " " + Arrays.toString(entry.getValue().toString().split(" ")));
         });
 
-        System.out.println("[FILES TO ADD]");
-        filesToAdd.entrySet().forEach(entry -> {
+        System.out.println("[FILES TO SEND]");
+        filesToSend.entrySet().forEach(entry -> {
             System.out.println(entry.getKey() + ":" + entry.getValue());
         });
 
@@ -304,10 +389,10 @@ public class Rebalance {
             System.out.println(entry.getKey() + " " + entry.getValue());
         });
 
-        System.out.println("[FLOOR FILES]");
-        floorLimitFiles.entrySet().forEach(entry -> {
-            System.out.println(entry.getKey() + " " + entry.getValue());
-        });
+//        System.out.println("[FLOOR FILES]");
+//        floorLimitFiles.entrySet().forEach(entry -> {
+//            System.out.println(entry.getKey() + " " + entry.getValue());
+//        });
     }
 
 
@@ -321,17 +406,30 @@ public class Rebalance {
         index.setStoreComplete("c.txt");
         index.setStoreInProgress("d.txt", 1);
         index.setStoreComplete("d.txt");
-        index.setRemoveInProgress("a.txt");
-        index.setRemoveComplete("a.txt");
-        index.setRemoveInProgress("b.txt");
+        index.setStoreInProgress("e.txt", 1);
+        index.setStoreComplete("e.txt");
+        index.setStoreInProgress("f.txt", 1);
+        index.setStoreComplete("f.txt");
+//        index.setRemoveInProgress("a.txt");
+//        index.setRemoveComplete("a.txt");
+//        index.setRemoveInProgress("b.txt");
 
         HashMap<Integer, List<String>> temp = new HashMap<>();
-        temp.put(10, Arrays.asList("a.txt", "b.txt"));
-        temp.put(11, Arrays.asList("c.txt","a.txt","d.txt"));
-        temp.put(12, Arrays.asList("b.txt","c.txt"));
-        temp.put(13, Arrays.asList("d.txt"));
+//        temp.put(10, new ArrayList<>(Arrays.asList("a.txt", "b.txt","e.txt")));
+//        temp.put(11, new ArrayList<>(Arrays.asList("c.txt","a.txt","d.txt")));
+//        temp.put(12, new ArrayList<>(Arrays.asList("b.txt","c.txt","e.txt","f.txt","d.txt")));
+//        temp.put(13, new ArrayList<>(Arrays.asList("d.txt")));
+//        temp.put(14, new ArrayList<>(Arrays.asList("e.txt","f.txt")));
+//        temp.put(15, new ArrayList<>());
+//        temp.put(16, new ArrayList<>());
+//        temp.put(17, new ArrayList<>());
+//        temp.put(18, new ArrayList<>());
+        temp.put(13, new ArrayList<>(new ArrayList<>()));
+        temp.put(12, new ArrayList<>(Arrays.asList("b.txt")));
+        temp.put(10, new ArrayList<>(Arrays.asList("b.txt","c.txt","d.txt")));
+        temp.put(11, new ArrayList<>(Arrays.asList("a.txt","b.txt","c.txt","d.txt","e.txt","f.txt")));
 
-        Rebalance rebalance = new Rebalance(temp,null, 3, index);
+        Rebalance rebalance = new Rebalance(temp,null, 4, index);
 
         System.out.println("***START***");
         rebalance.printState();
@@ -355,25 +453,25 @@ public class Rebalance {
         rebalance.printState();
 
 
-        System.out.println("\n***AFTER DIVING DSTORES***");
+        System.out.println("\n***AFTER DIVIDING DSTORES***");
         rebalance.divideDstores();
         rebalance.printState();
 
         System.out.println("\n***AFTER REPLICATING FILES***");
-        rebalance.replicateFiles();
+        rebalance.replicateFiles2();
         rebalance.printState();
-
 
 
         System.out.println("\n***AFTER DISTRIBUTING DSTORES***");
-        rebalance.evenFilesDistribution();
+        rebalance.distributeFiles();
         rebalance.printState();
+
+        System.out.println("\n***FORMATTED MESSAGES***");
 
         rebalance.formatRemoveMessages();
-        rebalance.printState();
-
         rebalance.formatAddMessages();
         rebalance.printState();
+
     }
 
 
