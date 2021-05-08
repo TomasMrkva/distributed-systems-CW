@@ -4,7 +4,6 @@ import java.net.Socket;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 
 public class Controller {
 
@@ -44,7 +43,6 @@ public class Controller {
     public ConcurrentHashMap<Integer, List<String>> rebalanceFiles;
     public CountDownLatch rebalanceLatch;
 
-
     public ConcurrentHashMap<Integer,ControllerDstoreSession> dstoreSessions;
     public ConcurrentHashMap<String, CountDownLatch> waitingStoreAcks;
     public ConcurrentHashMap<String, CountDownLatch> waitingRemoveAcks;
@@ -53,6 +51,7 @@ public class Controller {
     private final Object storeAcksLock = new Object();
     private final Object removeAcksLock = new Object();
     private final Object dstoresLock = new Object();
+    private HashMap<Integer,String[]> rebalceResult;
     public final Object storeLock = new Object();
     public final Object removeLock = new Object();
 
@@ -68,6 +67,7 @@ public class Controller {
         waitingRemoveAcks = new ConcurrentHashMap<>();
         filenameKeys = new ConcurrentHashMap<>();
         rebalanceFiles = new ConcurrentHashMap<>();
+        rebalceResult = new HashMap<>();
         index = new Index(this);
 //        MUTEX_PROVIDER = new IdMutexProvider();
         ControllerLogger.init(Logger.LoggingType.ON_FILE_AND_TERMINAL);
@@ -150,128 +150,55 @@ public class Controller {
         }
     }
 
+    public void setRebalanceResult(HashMap<Integer,String[]> result){
+        this.rebalceResult = result;
+    }
+
     //----Operations----
     // synchronized (filenameKeys.computeIfAbsent(filename, k -> new Object())) {}
 
     public void rebalanceOperation() {
         if(rebalance.compareAndSet(false, true)) {
-//            do {Thread.sleep(1000);}
-            while (waitingStoreAcks.mappingCount() != 0 && waitingRemoveAcks.mappingCount() != 0
-                    && index.readyToRebalance()) {};    //busy waiting for removes/stores
+
+            while (waitingStoreAcks.mappingCount() != 0 && waitingRemoveAcks.mappingCount() != 0 && index.readyToRebalance()) {};    //busy waiting for removes/stores
             rebalanceLatch = new CountDownLatch(dstoreSessions.size());
-            try {
-                if(!rebalanceLatch.await(TIMEOUT, TimeUnit.MILLISECONDS)){
-                    System.out.println("(!) Waiting for LOAD_ACKS: TIMEOUT");
-
-    //                index.removeFile(filename);
-                } else {
-
-                }
-            } catch (InterruptedException e) { e.printStackTrace(); return;}
             dstoreSessions.values().forEach(session -> session.sendMessageToDstore(Protocol.LIST_TOKEN));
-            for (ControllerDstoreSession session : dstoreSessions.values()) {
-                session.sendMessageToDstore(Protocol.LIST_TOKEN);
+            HashMap<Integer, List<String>> copy;
+
+            try {
+                if (!rebalanceLatch.await(TIMEOUT, TimeUnit.MILLISECONDS)) {
+                    System.out.println("(!) WAITING FOR LIST FROM DSTORES: TIMEOUT");
+                    copy = new HashMap<>(rebalanceFiles);
+                    List<Integer> dstoresToRemove = new ArrayList<>();
+                    dstoreSessions.keySet().forEach(port -> {
+                        if (!rebalanceFiles.containsKey(port)) dstoresToRemove.add(port);
+                    });
+                    dstoresToRemove.forEach(this::dstoreClosedNotify);
+                } else {
+                    copy = new HashMap<>(rebalanceFiles);
+                }
+                if (copy.size() == 0) {
+                    System.out.println("ERROR!");
+                    return;
+                }
+
+                CountDownLatch waitForRebalance = new CountDownLatch(1);
+                new Thread(new Rebalance(copy, this, R, index, waitForRebalance)).start();
+                if (!waitForRebalance.await(TIMEOUT, TimeUnit.MILLISECONDS)) {
+                    System.out.println("(!) TIMEOUT REACHED WHILE REBALANCING");
+                } else {
+                    index.updateIndex();
+                    rebalceResult.forEach((port, msg) -> dstoreSessions.get(port).sendMessageToDstore(String.join(",", msg)));
+                }
+            } catch (InterruptedException e) {
+                System.out.println("SOMETHING WRONG HAPPENED");
+                e.printStackTrace();
             }
-            //TODO: this might not be too good
-
-        } else {
-            System.out.println("Rebalance still in progress!");
         }
-    }
-
-//    private List<String> fileDistribution() {
-//
-//        Map<Integer, List<String>> dstoreContents = new HashMap<>(rebalanceFiles); //dstorePort -> [filenames] map
-//        Map<String, List<Integer>> filesAllocation = new HashMap<>();   // filenames -> [Dstore_Ports]
-//        Map<Integer, String[]> messages = new HashMap<>();  //[0] -> to send [1] -> to remove
-//        Map<Integer, List<String>> filesToMove = new HashMap<>();
-////        Map<Integer, Integer> freeSpaces = new HashMap<>();
-//        Stack<Integer[]> freeSpaces = new Stack<>();
-//
-//        dstoreContents.forEach((k, v) -> v.forEach(filename -> {
-//            List<Integer> list = filesAllocation.getOrDefault(filename, new ArrayList<>());
-//            list.add(k);
-//            filesAllocation.put(filename, list);
-//        }));
-//
-//        dstoreContents.clear();
-//
-//        filesAllocation.forEach((filename, dstores) -> {
-//            if (dstores.size() > R) {
-////                List<Integer> head = dstores.subList(0, R);
-//                List<Integer> tail = dstores.subList(R, dstores.size());
-//                tail.forEach(dstorePort -> {
-//                    String[] msg = messages.getOrDefault(dstorePort, new String[2]);
-//                    msg[1] = msg[1] + " " + filename;   //saves the name of files to remove
-//                    messages.put(dstorePort, msg);
-//                });
-//                dstores.subList(R, dstores.size()).clear();   //removes extra files
-//            }
-//            dstores.forEach(dstorePort -> {    //recreates dstorePort -> [filenames] map
-//                List<String> list = dstoreContents.getOrDefault(dstorePort, new ArrayList<>());
-//                list.add(filename);
-//                dstoreContents.put(dstorePort, list);
-//            });
-//        });
-//
-//        double compute = (double) R * (filesAllocation.size()) / rebalanceFiles.size();
-//        double floor = Math.floor(compute), ceil = Math.ceil(compute);
-//
-//        dstoreContents.forEach((k, v) -> {
-//            if (v.size() < floor)
-//                freeSpaces.push(new Integer[]{k, (int) ceil - v.size()});
-//            else if (v.size() > ceil) {
-//                List<String> tail = v.subList(R, v.size());
-//                filesToMove.put(k, tail);
-//                tail.clear();
-//            }
-//        });
-//
-//        filesToMove.forEach((originDS, files) -> {
-//            freeSpaces.forEach((newDS, capacity) -> {
-//                if (capacity > files.size()) {
-//                    capacity = capacity - files.size();
-//
-//                }
-//            });
-//        });
-//
-//        filesToMove.entrySet().forEach(entry -> {
-//            Integer port = entry.getKey();
-//            List<String> files = entry.getValue();
-//            while (!files.isEmpty()) {
-//                Integer[] top = freeSpaces.peek();
-//                int destinationPort = top[0];
-//                int freeSpace = top[1];
-//                if (freeSpace > files.size()) {
-////                    freeSpaces.pop(); freeSpaces.push(new Integer[]{destinationPort,freeSpace - files.size()});
-//                    top[1] = freeSpace - files.size();
-//                    String[] msg = messages.get(destinationPort);
-//                    for (String s : files) {
-//                        msg[0] = msg[0] + " " + s;  //TODO: make sure that the files are not duplicate
-//                    }
-//                }
-//            }
-//        });
-//
-//    }
-
-
-
-//        Map<Integer, >
-//
-//        for (String item : files) {
-//            if (countMap.containsKey(item))
-//                countMap.put(item, countMap.get(item) + 1);
-//            else
-//                countMap.put(item, 1);
+//        else {
+//            System.out.println("Rebalance still in progress!");
 //        }
-//        files.clear();
-//        countMap.forEach((k,v) -> {
-//            if(v < R){
-//                files.addAll(Collections.nCopies(R-v,k));   //TODO: finished here
-//            }
-//        });
+    }
 
     public void controllerRemoveOperation(String filename, ControllerClientSession session) throws InterruptedException {
         List<ControllerDstoreSession> dstores;

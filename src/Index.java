@@ -13,10 +13,33 @@ public class Index {
 
     private final List<MyFile> files;
     private final Controller controller;
+    private final HashMap<String,List<ControllerDstoreSession>> indexUpdate;
 
     public Index(Controller controller) {
         files = Collections.synchronizedList(new ArrayList<>());
         this.controller = controller;
+        this.indexUpdate = new HashMap<>();
+    }
+
+    public void saveFutureUpdate(HashMap<String,List<Integer>> indexUpdate) {
+        indexUpdate.forEach( (filename, ports) -> {
+            List<ControllerDstoreSession> dstores = new ArrayList<>();
+            for (Integer port : ports) {
+                ControllerDstoreSession cd = controller.dstoreSessions.get(port);
+                if (cd != null) {
+                    dstores.add(cd);
+                }
+            }
+            this.indexUpdate.put(filename,dstores);
+        });
+    }
+
+    public void updateIndex() {
+        synchronized (files) {
+            for (MyFile f : files) {
+                indexUpdate.get(f.getName()
+            }
+        }
     }
 
     public boolean setStoreInProgress(String filename, int filesize){

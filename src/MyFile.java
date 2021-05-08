@@ -55,6 +55,13 @@ public class MyFile {
         }
     }
 
+    public void setDstores(List<Integer> newDstores){
+        synchronized (dstores){
+            dstores.clear();
+
+        }
+    }
+
     public int getFilesize() {
         return filesize;
     }
