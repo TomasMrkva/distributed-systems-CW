@@ -37,9 +37,12 @@ public class Index {
     public void updateIndex() {
         synchronized (files) {
             for (MyFile f : files) {
-                indexUpdate.get(f.getName()
+                List<ControllerDstoreSession> dstores = indexUpdate.get(f.getName());
+                if(dstores == null) throw new AssertionError();
+                f.setDstores(dstores);
             }
         }
+        System.out.println("INDEX UPDATE FINISHED");
     }
 
     public boolean setStoreInProgress(String filename, int filesize){

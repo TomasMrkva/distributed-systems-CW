@@ -55,10 +55,10 @@ public class MyFile {
         }
     }
 
-    public void setDstores(List<Integer> newDstores){
+    public void setDstores(List<ControllerDstoreSession> newDstores){
         synchronized (dstores){
             dstores.clear();
-
+            dstores.addAll(newDstores);
         }
     }
 

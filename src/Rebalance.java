@@ -53,9 +53,21 @@ public class Rebalance implements Runnable {
         divideDstores();
         replicateFiles();
         distributeFiles();
-        formatRemoveMessages();
-        formatAddMessages();
+        formatRemoveMessages(); formatAddMessages();
+        System.out.println("[CORRECT FILES]");
+        correctFilesSize.entrySet().forEach(entry -> {
+            System.out.println(entry.getKey() + " " + entry.getValue());
+        });
+        System.out.println("[FILES TO REMOVE]");
+        filesToRemove.entrySet().forEach(entry -> {
+            System.out.println(entry.getKey() + " " + entry.getValue());
+        });
+        System.out.println("[FILES TO SEND]");
+        filesToSend.entrySet().forEach(entry -> {
+            System.out.println(entry.getKey() + " " + entry.getValue());
+        });
         controller.setRebalanceResult(constructCombinedMsg());
+        sendToIndex();
         latch.countDown();
     }
 
@@ -102,7 +114,7 @@ public class Rebalance implements Runnable {
         return combinedMessages;
     }
 
-    private void updateIndex() {
+    private void sendToIndex() {
         HashMap<String,List<Integer>> filesMap = new HashMap<>();
         correctFilesSize.forEach( (port,files) -> {
             for (String filename : files) {

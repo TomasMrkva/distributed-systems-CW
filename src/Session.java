@@ -42,6 +42,10 @@ public abstract class Session implements Runnable {
         }
     }
 
+//    public void closeConnection() throws IOException {
+//        connection.close();
+//    }
+
     @Override
     public void run(){
         System.out.println("Controller -> " + name + " connection established");

@@ -195,7 +195,7 @@ public class Dstore {
             byte[] bytes = inf.readNBytes(filesize);
             outf.write(bytes);
             inf.close();
-//            outf.close();
+            outf.close();
         }
     }
 

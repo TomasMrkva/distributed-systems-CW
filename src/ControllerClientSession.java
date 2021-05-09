@@ -4,7 +4,7 @@ import java.net.Socket;
 import java.util.*;
 
 /**
- * Controller -> Dstore connection
+ * Controller -> Client connection
  */
 public class ControllerClientSession extends Session {
 
@@ -35,26 +35,36 @@ public class ControllerClientSession extends Session {
         ControllerLogger.getInstance().messageReceived(socket, message);
     }
 
-    public void singleOperation(String message) throws InterruptedException {
-        ControllerLogger.getInstance().messageReceived(socket, message);
-        if (controller.rebalance.get()){
-            controller.queue.add(new Controller.QueuedOperation(message, socket, this));
-        } else {
-            performOperation(message);
-        }
-    }
+//    public void singleOperation(String message) throws InterruptedException {
+//        ControllerLogger.getInstance().messageReceived(socket, message);
+//        if (controller.rebalance.get()){
+//            controller.queue.add(new Controller.QueuedOperation(message, socket, this));
+//        } else {
+//            performOperation(message);
+//        }
+//    }
 
-    private void performOperation(String message) throws InterruptedException {
+    public void singleOperation(String message) throws InterruptedException {
         if(controller.dstoreSessions.size() < controller.R){
             send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
             return;
         }
         String[] messageSplit = message.split(" ");
         switch (messageSplit[0]) {
-            case "STORE" -> storeMessage(messageSplit);
+            case "STORE" -> {
+                if (controller.rebalance.get())
+                    controller.queue.add(new Controller.QueuedOperation(message, socket, this));
+                else
+                    storeMessage(messageSplit);
+            }
             case "LOAD" -> loadMessage(messageSplit);
             case "RELOAD" -> reloadMessage(messageSplit);
-            case "REMOVE" -> removeMessage(messageSplit);
+            case "REMOVE" -> {
+                if (controller.rebalance.get())
+                    controller.queue.add(new Controller.QueuedOperation(message, socket, this));
+                else
+                    removeMessage(messageSplit);
+            }
             case "LIST" -> listMessage(messageSplit);
             default -> recieveLog("Malformed message: " + String.join(" ", messageSplit));
         }

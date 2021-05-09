@@ -56,6 +56,7 @@ public class ControllerDstoreSession extends Session {
             case "LIST":
                 controller.rebalanceFiles.put(dstorePort, Arrays.asList(messageSplit).subList(1, messageSplit.length));
                 controller.rebalanceLatch.countDown();
+                System.out.println("RECEIVED LIST : " + Arrays.asList(messageSplit).subList(1, messageSplit.length) + controller.rebalanceLatch.getCount());
                 break;
             default:
                 System.out.println("Unrecognized command in controllerDstoreSession: " +  message);
@@ -66,6 +67,10 @@ public class ControllerDstoreSession extends Session {
     private void fileList(String[] fileList) {
         System.out.println("File list for port: " + dstorePort + " is: " + Arrays.toString(fileList));
         numberOfFiles = fileList.length;
+    }
+
+    public void closeSession() throws IOException {
+        dstoreSocket.close();
     }
 
     @Override
