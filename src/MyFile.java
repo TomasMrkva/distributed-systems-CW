@@ -66,18 +66,18 @@ public class MyFile {
         return filesize;
     }
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        MyFile myFile = (MyFile) o;
-        return filename.equals(myFile.filename);
-    }
+//    @Override
+//    public boolean equals(Object o) {
+//        if (this == o) return true;
+//        if (o == null || getClass() != o.getClass()) return false;
+//        MyFile myFile = (MyFile) o;
+//        return filename.equals(myFile.getName());
+//    }
 
-    @Override
-    public int hashCode() {
-        return Objects.hash(filename);
-    }
+//    @Override
+//    public int hashCode() {
+//        return Objects.hash(filename);
+//    }
 
     @Override
     public String toString() {

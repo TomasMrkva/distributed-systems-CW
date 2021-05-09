@@ -175,6 +175,9 @@ public class Rebalance implements Runnable {
             if (!indexFiles.contains(filename)){
                 filesToRemove.add(filename);
             }
+//            else if (index.getFiles().stream().map(MyFile::getName).noneMatch(filename::equals)) {
+//                filesToRemove.add(filename);
+//            }
         });
         filesToRemove.forEach(this::removeFileEverywhere);
     }
