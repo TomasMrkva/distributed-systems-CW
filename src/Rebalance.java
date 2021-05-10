@@ -20,7 +20,7 @@ public class Rebalance implements Runnable {
     private final int R;
     private int floor, ceil;
 
-    public Rebalance(HashMap<Integer, List<String>> dstoreFiles, Controller controller, int R, Index index, CountDownLatch latch) {
+    public Rebalance(HashMap<Integer, List<String>> dstoreFiles, Controller controller, CountDownLatch latch) {
         this.latch = latch;
         this.dstoreFiles = dstoreFiles;
         overLimitFiles = new HashMap<>();
@@ -31,8 +31,8 @@ public class Rebalance implements Runnable {
         filesAllocation = new HashMap<>();
         masterDstores = new HashMap<>();
         this.controller = controller;
-        this.index = index;
-        this.R = R;
+        this.index = controller.index;
+        this.R = controller.R;
         setup();
     }
 
@@ -54,18 +54,18 @@ public class Rebalance implements Runnable {
         replicateFiles();
         distributeFiles();
         formatRemoveMessages(); formatAddMessages();
-        System.out.println("[CORRECT FILES]");
-        correctFilesSize.entrySet().forEach(entry -> {
-            System.out.println(entry.getKey() + " " + entry.getValue());
-        });
-        System.out.println("[FILES TO REMOVE]");
-        filesToRemove.entrySet().forEach(entry -> {
-            System.out.println(entry.getKey() + " " + entry.getValue());
-        });
-        System.out.println("[FILES TO SEND]");
-        filesToSend.entrySet().forEach(entry -> {
-            System.out.println(entry.getKey() + " " + entry.getValue());
-        });
+//        System.out.println("[CORRECT FILES]");
+//        correctFilesSize.entrySet().forEach(entry -> {
+//            System.out.println(entry.getKey() + " " + entry.getValue());
+//        });
+//        System.out.println("[FILES TO REMOVE]");
+//        filesToRemove.entrySet().forEach(entry -> {
+//            System.out.println(entry.getKey() + " " + entry.getValue());
+//        });
+//        System.out.println("[FILES TO SEND]");
+//        filesToSend.entrySet().forEach(entry -> {
+//            System.out.println(entry.getKey() + " " + entry.getValue());
+//        });
         controller.setRebalanceResult(constructCombinedMsg());
         sendToIndex();
         latch.countDown();
@@ -339,7 +339,7 @@ public class Rebalance implements Runnable {
                 if (selectedEntry == null) {
                     System.err.println("NO ENTRY FOUND");
 //                    originFiles.add(foundFilename);
-                    continue;
+                    break;
                 }
                 int destPort = selectedEntry.getKey();
                 List<String> destFiles = selectedEntry.getValue();
@@ -363,7 +363,9 @@ public class Rebalance implements Runnable {
         underLimitFiles.forEach( (k,v) -> { if (v.size() == floor) correctFilesSize.put(k,v); } );
         underLimitFiles.entrySet().removeIf( entries -> entries.getValue().size() == floor);
         if(!underLimitFiles.isEmpty()){
-            throw new AssertionError();
+//            throw new AssertionError();
+            System.err.println("(!)ERROR: Files could not be distriuted evenly");
+            correctFilesSize.putAll(underLimitFiles);
         }
 //        if(!underLimitFiles.isEmpty()) {
 //            System.err.println("UNDER LIMIT FILES CALLED");
@@ -371,47 +373,47 @@ public class Rebalance implements Runnable {
 //        }
     }
 
-    private void fillUnderLimitFiles() {
-        HashMap<Integer, List<String>> ceilFiles = new HashMap<>();
-        correctFilesSize.forEach((k, v) -> {
-            if (v.size() == ceil) ceilFiles.put(k, v);
-        });
-
-        Iterator<Map.Entry<Integer, List<String>>> it = underLimitFiles.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<Integer, List<String>> currentPair = it.next();       // underLimitFile entry
-            Integer destPort = currentPair.getKey();                        // underLimit -> (destPort, destFiles)
-            List<String> destFiles = currentPair.getValue();
-            while (destFiles.size() < floor) {
-                for (Map.Entry<Integer, List<String>> entry : ceilFiles.entrySet()) {       // ceilingFiles entry
-                    int originPort = entry.getKey();                                        // ceilingFiles -> (originPort, originFiles)
-                    List<String> originFiles = entry.getValue();
-                    boolean found = false;
-                    Iterator<String> iter = originFiles.iterator();                        // List<OriginFiles> it
-                    while (iter.hasNext()) {
-                        String filename = iter.next();                                      // filename it.get(next);
-                        if (!destFiles.contains(filename)) {                                // underLimit -> (destPort,destFiles).contains(filename)
-//                            System.out.println("BEFORE: " + Arrays.toString(originFiles.toArray()));
-                            destFiles.add(filename);                                        // underLimit (destFiles).add(filename)
-                            updateFilesToSend(masterDstores.get(filename), filename, destPort);
-                            updateFilesToRemove(originPort, filename);
-                            it.remove();
-//                            dstoreFiles.put(destPort,destFiles);
-                            iter.remove();                                                  //originFiles.remove(filename)
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (found) {
-                        System.out.println("AFTER: " + Arrays.toString(originFiles.toArray()));
-                        correctFilesSize.put(originPort, originFiles);
-                        break;
-                    }
-                }
-                correctFilesSize.put(destPort, destFiles);
-            }
-        }
-    }
+//    private void fillUnderLimitFiles() {
+//        HashMap<Integer, List<String>> ceilFiles = new HashMap<>();
+//        correctFilesSize.forEach((k, v) -> {
+//            if (v.size() == ceil) ceilFiles.put(k, v);
+//        });
+//
+//        Iterator<Map.Entry<Integer, List<String>>> it = underLimitFiles.entrySet().iterator();
+//        while (it.hasNext()) {
+//            Map.Entry<Integer, List<String>> currentPair = it.next();       // underLimitFile entry
+//            Integer destPort = currentPair.getKey();                        // underLimit -> (destPort, destFiles)
+//            List<String> destFiles = currentPair.getValue();
+//            while (destFiles.size() < floor) {
+//                for (Map.Entry<Integer, List<String>> entry : ceilFiles.entrySet()) {       // ceilingFiles entry
+//                    int originPort = entry.getKey();                                        // ceilingFiles -> (originPort, originFiles)
+//                    List<String> originFiles = entry.getValue();
+//                    boolean found = false;
+//                    Iterator<String> iter = originFiles.iterator();                        // List<OriginFiles> it
+//                    while (iter.hasNext()) {
+//                        String filename = iter.next();                                      // filename it.get(next);
+//                        if (!destFiles.contains(filename)) {                                // underLimit -> (destPort,destFiles).contains(filename)
+////                            System.out.println("BEFORE: " + Arrays.toString(originFiles.toArray()));
+//                            destFiles.add(filename);                                        // underLimit (destFiles).add(filename)
+//                            updateFilesToSend(masterDstores.get(filename), filename, destPort);
+//                            updateFilesToRemove(originPort, filename);
+//                            it.remove();
+////                            dstoreFiles.put(destPort,destFiles);
+//                            iter.remove();                                                  //originFiles.remove(filename)
+//                            found = true;
+//                            break;
+//                        }
+//                    }
+//                    if (found) {
+//                        System.out.println("AFTER: " + Arrays.toString(originFiles.toArray()));
+//                        correctFilesSize.put(originPort, originFiles);
+//                        break;
+//                    }
+//                }
+//                correctFilesSize.put(destPort, destFiles);
+//            }
+//        }
+//    }
 
 //    private void printState() {
 //        System.out.println("[DSTORE FILES]");

@@ -35,15 +35,6 @@ public class ControllerClientSession extends Session {
         ControllerLogger.getInstance().messageReceived(socket, message);
     }
 
-//    public void singleOperation(String message) throws InterruptedException {
-//        ControllerLogger.getInstance().messageReceived(socket, message);
-//        if (controller.rebalance.get()){
-//            controller.queue.add(new Controller.QueuedOperation(message, socket, this));
-//        } else {
-//            performOperation(message);
-//        }
-//    }
-
     public void singleOperation(String message) throws InterruptedException {
         if(controller.dstoreSessions.size() < controller.R){
             send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);

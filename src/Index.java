@@ -161,22 +161,21 @@ public class Index {
         return true;
     }
 
-    public List<Integer> getRDstores(int r){
-        List<Integer> dstores = new ArrayList<>();
+    public List<ControllerDstoreSession> getRDstores(int r){
+        List<ControllerDstoreSession> dstores = new ArrayList<>();
         synchronized (files) {
-            files.forEach(myFile -> myFile.getDstores().forEach(dstore -> dstores.add(dstore.getDstorePort())));
+            files.forEach(myFile -> dstores.addAll(myFile.getDstores()));
         }
-            dstores.addAll(controller.dstoreSessions.keySet());
-            Collections.shuffle(dstores);
-            Map<Integer, Long> counts = dstores.stream().collect(Collectors.groupingBy(e -> e, Collectors.counting()));
-            counts = counts.entrySet().stream()
-                    .sorted(Map.Entry.comparingByValue())
-                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
-                            (e1, e2) -> e1, LinkedHashMap::new));
-            List<Integer> result = new ArrayList<>(counts.keySet());
-            System.out.println("RDstores: " + Arrays.toString(result.toArray()));
-            return result.stream().limit(r).collect(Collectors.toList());
-//        }
+        dstores.addAll(controller.dstoreSessions.values());
+        Collections.shuffle(dstores);
+        Map<ControllerDstoreSession, Long> counts = dstores.stream().collect(Collectors.groupingBy(e -> e, Collectors.counting()));
+        counts = counts.entrySet().stream()
+                .sorted(Map.Entry.comparingByValue())
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
+                        (e1, e2) -> e1, LinkedHashMap::new));
+        List<ControllerDstoreSession> result = new ArrayList<>(counts.keySet());
+        System.out.println("RDstores: " + Arrays.toString(result.toArray()));
+        return result.stream().limit(r).collect(Collectors.toList());
     }
 
 //    public MyFile getFile(String filename) {
@@ -200,6 +199,31 @@ public class Index {
             return false;
         }
     }
+    public boolean addDstores(String filename, List<ControllerDstoreSession> dstores) {
+        synchronized (files){
+            for(MyFile f : files) {
+                if(f.getName().equals(filename)){
+                    f.addDstores(dstores);
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    public boolean removeDstores(String filename, List<ControllerDstoreSession> dstores) {
+        synchronized (files){
+            for(MyFile f : files) {
+                if(f.getName().equals(filename)){
+                    f.getDstores().removeAll(dstores);
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+
 
     /**
      * Removes a dstore with the specified parameter form the list of dstores in the file.

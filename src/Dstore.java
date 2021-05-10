@@ -29,6 +29,7 @@ public class Dstore {
     final String FOLDER_NAME;
     final Set<FileRecord> files;
     final File dir;
+    final Object fileLock = new Object();
 
 
     public Dstore(int port, int cport, int timeout, String file_folder) throws Exception {
@@ -71,11 +72,124 @@ public class Dstore {
                     switch (lineSplit[0]) {
                         case "REMOVE" -> removeFile(lineSplit);
                         case "LIST" -> list();
+                        case "REBALANCE" -> rebalance(lineSplit);
                         default -> System.out.println("Unrecognised command " + line);
                     }
                 }
             } catch (IOException e) {e.printStackTrace();}
         }).start();
+    }
+
+    List<String> filesToRemove;
+    Map<String, List<Integer>> filesToSend;
+    private void rebalance(String[] lineSplit) {
+        parseRemove( parseAdd(lineSplit) );
+        if (!filesToRemove.isEmpty()) {
+            for (String removeFile : filesToRemove) {
+                files.removeIf( f -> f.getName().equals(removeFile) );
+            }
+        }
+        if (filesToSend.isEmpty()){
+            return;
+        } else {
+//            CountDownLatch latch = new CountDownLatch(filesToSend.values().size());
+            rebalanceSend();
+//            try { latch.await(); }
+//            catch (InterruptedException e) { e.printStackTrace(); };
+        }
+        filesToRemove.forEach( file -> files.removeIf( record -> record.getName().equals(file)));
+    }
+
+    private void rebalanceSend() {
+        filesToSend.forEach( (filename, dstores) -> {
+            for (int port : dstores) {
+                try {
+                    Socket socket = new Socket("localhost", port);
+                    new Thread( () -> {
+                        try { sendRebalanceFile(socket, filename); }
+                        catch (IOException e) { e.printStackTrace();}
+                    }).start();
+                    new Thread( () -> {
+                        try {
+                            send(Protocol.REBALANCE_STORE_TOKEN + " " + filename + " " + getFile(filename).getFilesize(), socket);
+                        } catch (IOException e) { e.printStackTrace(); }
+                    }).start();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+    }
+
+    private void sendRebalanceFile(Socket socket, String filename) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+        String line = in.readLine();
+        socket.shutdownInput();
+        if(!line.equals(Protocol.ACK_TOKEN)) {
+            throw new AssertionError();
+        } else {
+            File file = new File(filename);
+            InputStream inf = new FileInputStream(file);
+            OutputStream outf = socket.getOutputStream();
+            byte[] bytes = inf.readNBytes(getFile(filename).getFilesize());
+            outf.write(bytes);
+            inf.close();
+            outf.close();
+        }
+//        latch.countDown();
+        send(Protocol.REMOVE_COMPLETE_TOKEN, socket);
+    }
+
+    private FileRecord getFile(String filename) {
+        for (FileRecord f : files) {
+            if (f.getName().equals(filename))
+                return f;
+        }
+        throw new AssertionError();
+    }
+
+    private void parseRemove(String[] msg) {
+        filesToRemove = new ArrayList<>();
+        int numberToRemove;
+        try {
+            numberToRemove = Integer.parseInt(msg[0]);
+        } catch (NumberFormatException e) {
+            return;
+        }
+        for (int i = 1; i <= numberToRemove; i++) {
+            filesToRemove.add(msg[i]);
+        }
+        System.out.println(Arrays.toString(filesToRemove.toArray()));
+    }
+
+    private String[] parseAdd(String[] lineSplit) {
+        String[] msg = Arrays.copyOfRange(lineSplit,1,lineSplit.length);
+        filesToSend = new HashMap<>();
+        try {
+            int numberTosend = Integer.parseInt(msg[0]);
+            int j = 1;
+            for (int i = 0; i < numberTosend; i++) {
+                String filename = msg[j];
+//                System.out.println("FILE " + filename);
+                j++;
+                int dstoresAmount = Integer.parseInt(msg[j]);
+                j++;
+//                System.out.println("AMOUNT " + dstoresAmount);
+                for (int x = 0; x < dstoresAmount; x++) {
+                    int dstorePort = Integer.parseInt(msg[j]);
+                    j++;
+//                    System.out.println("PORT " + dstorePort);
+                    List<Integer> list = filesToSend.getOrDefault(filename, new ArrayList<>());
+                    list.add(dstorePort);
+                    filesToSend.put(filename, list);
+                }
+            }
+//            System.out.println("***PARSED RESULT***");
+//            sendMap.forEach((key, value) -> System.out.println(key + " " + value));
+            return Arrays.copyOfRange(lineSplit,j+1,lineSplit.length);
+        } catch (NumberFormatException e) {
+            return lineSplit;
+        }
     }
 
     private void list() throws IOException {
@@ -104,8 +218,9 @@ public class Dstore {
 
                         String[] lineSplit = line.split(" ");
                         switch (lineSplit[0]) {
-                            case "STORE" -> store(lineSplit, client);
+                            case "STORE" -> store(lineSplit, client, false);
                             case "LOAD_DATA" -> loadData(lineSplit, client);
+                            case "REBALANCE_STORE" -> store(lineSplit, client, true);
                             default -> System.out.println("Unrecognised command " + line);
                         }
                     }
@@ -118,8 +233,8 @@ public class Dstore {
 
     // Operations
 
-    private void store(String[] lineSplit, Socket client) throws IOException {
-        if (!isStoreMessageCorrect(lineSplit, client)) return;
+    private void store(String[] lineSplit, Socket client, boolean rebalance) throws IOException {
+        if (!isStoreMessageCorrect(lineSplit)) return;
         boolean exists = false;
         for (FileRecord f : files) {
             if (f.getName().equals(lineSplit[1])){
@@ -135,13 +250,14 @@ public class Dstore {
             System.out.println("File already exists, closing socket");
             client.close();
         }
-        files.forEach( file -> System.out.println(file.getName() + " : " + file.getFilesize()));
-        send(Protocol.STORE_ACK_TOKEN + " " + lineSplit[1], CSOCKET);
+//        files.forEach( file -> System.out.println(file.getName() + " : " + file.getFilesize()));
+        if (!rebalance)
+            send(Protocol.STORE_ACK_TOKEN + " " + lineSplit[1], CSOCKET);
     }
 
-    private boolean isStoreMessageCorrect(String[] lineSplit, Socket client){
+    private boolean isStoreMessageCorrect(String[] lineSplit){
         if (lineSplit.length != 3 || !Common.isNumeric(lineSplit[2])) {
-            System.out.println("Malformed STORE message: " + String.join(" ", lineSplit));
+            System.out.println("Malformed STORE/REBALANCE_STORE message: " + String.join(" ", lineSplit));
             return false;
         }
         return true;

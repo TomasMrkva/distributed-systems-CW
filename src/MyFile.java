@@ -1,7 +1,6 @@
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 
 public class MyFile {
 
@@ -42,7 +41,18 @@ public class MyFile {
     }
 
     public boolean addDstore(ControllerDstoreSession controllerDstoreSession) {
+        for (ControllerDstoreSession dstore : dstores) {
+            if (dstore.getDstorePort() == controllerDstoreSession.getDstorePort()) {
+                return true;
+            }
+        }
         return dstores.add(controllerDstoreSession);
+    }
+
+    public boolean addDstores(List<ControllerDstoreSession> controllerDstoreSessions) {
+        dstores.clear();
+        dstores.addAll(controllerDstoreSessions);
+        return true;
     }
 
     public boolean removeDstore(ControllerDstoreSession controllerDstoreSession) {

@@ -47,11 +47,9 @@ public class ControllerDstoreSession extends Session {
                 controller.addStoreAck(filename, this);
                 break;
             case "REMOVE_ACK":
+            case "ERROR_FILE_DOES_NOT_EXIST":
                 filename = messageSplit[1];
                 controller.addRemoveAck(filename, this);
-                break;
-            case "ERROR_FILE_DOES_NOT_EXIST":
-                System.out.println(message);
                 break;
             case "LIST":
                 controller.rebalanceFiles.put(dstorePort, Arrays.asList(messageSplit).subList(1, messageSplit.length));
