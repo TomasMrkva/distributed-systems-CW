@@ -53,7 +53,7 @@ public class ControllerDstoreSession extends Session {
             case "LIST":
                 controller.rebalanceFiles.put(dstorePort, new ArrayList<>(Arrays.asList(messageSplit).subList(1, messageSplit.length)));
                 controller.rebalanceLatch.countDown();
-                System.out.println("RECEIVED LIST : " + Arrays.asList(messageSplit).subList(1, messageSplit.length) + controller.rebalanceLatch.getCount());
+//                System.out.println("RECEIVED LIST : " + Arrays.asList(messageSplit).subList(1, messageSplit.length) + controller.rebalanceLatch.getCount());
                 break;
             case "REBALANCE_COMPLETE":
                 controller.rebalanceCompleteLatch.countDown();

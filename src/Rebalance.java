@@ -54,18 +54,18 @@ public class Rebalance implements Runnable {
         replicateFiles();
         distributeFiles();
         formatRemoveMessages(); formatAddMessages();
-        System.out.println("[CORRECT FILES]");
-        correctFilesSize.entrySet().forEach(entry -> {
-            System.out.println(entry.getKey() + " " + entry.getValue());
-        });
-        System.out.println("[FILES TO REMOVE]");
-        filesToRemove.entrySet().forEach(entry -> {
-            System.out.println(entry.getKey() + " " + entry.getValue());
-        });
-        System.out.println("[FILES TO SEND]");
-        filesToSend.entrySet().forEach(entry -> {
-            System.out.println(entry.getKey() + " " + entry.getValue());
-        });
+//        System.out.println("[CORRECT FILES]");
+//        correctFilesSize.entrySet().forEach(entry -> {
+//            System.out.println(entry.getKey() + " " + entry.getValue());
+//        });
+//        System.out.println("[FILES TO REMOVE]");
+//        filesToRemove.entrySet().forEach(entry -> {
+//            System.out.println(entry.getKey() + " " + entry.getValue());
+//        });
+//        System.out.println("[FILES TO SEND]");
+//        filesToSend.entrySet().forEach(entry -> {
+//            System.out.println(entry.getKey() + " " + entry.getValue());
+//        });
         controller.setRebalanceResult(constructCombinedMsg());
         sendToIndex();
         latch.countDown();
@@ -364,9 +364,9 @@ public class Rebalance implements Runnable {
         });
         underLimitFiles.entrySet().removeIf(entries -> entries.getValue().size() == floor);
         if (!underLimitFiles.isEmpty()) {
+            System.out.println("(i) Retrying to distribute files");
             fillUnderLimitFiles();
         } else {
-            System.out.println("(i) Retrying to distribute files");
             correctFilesSize.putAll(underLimitFiles);
         }
     }

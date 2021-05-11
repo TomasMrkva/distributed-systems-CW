@@ -11,12 +11,12 @@ public class Index {
         REMOVE_COMPLETE
     }
 
-    private final List<MyFile> files;
+    private final Set<MyFile> files;
     private final Controller controller;
     private final HashMap<String,List<ControllerDstoreSession>> indexUpdate;
 
     public Index(Controller controller) {
-        files = Collections.synchronizedList(new ArrayList<>());
+        files = Collections.synchronizedSet(new HashSet<>());
         this.controller = controller;
         this.indexUpdate = new HashMap<>();
     }
@@ -38,18 +38,20 @@ public class Index {
         synchronized (files) {
             for (MyFile f : files) {
                 List<ControllerDstoreSession> dstores = indexUpdate.get(f.getName());
-                if(dstores == null) throw new AssertionError();
+                if (dstores == null) {
+                    System.out.println("(X) INDEX:42 SOMETHING WENT WRONG");
+                }
                 f.setDstores(dstores);
                 f.setOperation(Operation.STORE_COMPLETE);
             }
         }
-        System.out.println("(i) INDEX CONFIRMATION: INDEX UPDATE FINISHED");
     }
 
     public boolean setStoreInProgress(String filename, int filesize){
         synchronized (files){
             for(MyFile f : files) {
                 if(f.getName().equals(filename)){
+                    System.out.println(f.getName() + " " + f.getOperation());
                     if(!f.canStore()) return false;
                 }
             }
@@ -89,27 +91,27 @@ public class Index {
         }
     }
 
-    public boolean setRemoveComplete(String filename){
-        synchronized (files){
-            for(MyFile f : files) {
-                if(f.getName().equals(filename)){
-                    if(f.getOperation() == Operation.REMOVE_IN_PROGRESS) {
-                        f.setOperation(Operation.REMOVE_COMPLETE);
-                        return true;
-                    } else {
-                        System.err .println("ERROR IN INDEX 98: -> THIS SHOULD NEVER HAPPEN!");
-                        return false;
-                    }
-                }
-            }
-            throw new AssertionError();
-//            return false;
-        }
-    }
+//    public boolean setRemoveComplete(String filename){
+//        synchronized (files){
+//            for(MyFile f : files) {
+//                if(f.getName().equals(filename)){
+//                    if(f.getOperation() == Operation.REMOVE_IN_PROGRESS) {
+//                        f.setOperation(Operation.REMOVE_COMPLETE);
+//                        return true;
+//                    } else {
+//                        System.err .println("ERROR IN INDEX 98: -> THIS SHOULD NEVER HAPPEN!");
+//                        return false;
+//                    }
+//                }
+//            }
+//            throw new AssertionError();
+////            return false;
+//        }
+//    }
 
-    public List<MyFile> getFiles(){
+    public Set<MyFile> getFiles(){
         synchronized (files){
-            return files;
+           return files;
         }
     }
 
@@ -169,9 +171,11 @@ public class Index {
 
     public boolean readyToRebalance() {
         synchronized (files) {
-            for(MyFile f : files){
-                if(f.inProgress())
+            for (MyFile f : files){
+                if (f.inProgress()) {
+                    System.out.println(f.getName() + " IN PROGRESS");
                     return false;
+                }
             }
         }
         return true;
@@ -246,8 +250,6 @@ public class Index {
 //        }
 //    }
 
-
-
     /**
      * Removes a dstore with the specified parameter form the list of dstores in the file.
      * This method is called when a dstore becomes unavailable
@@ -258,7 +260,7 @@ public class Index {
             Iterator<MyFile> it = files.iterator();
             while(it.hasNext()){
                 MyFile f = it.next();
-                f.getDstores().removeIf(dstoreSession -> dstoreSession.getDstorePort() == dstorePort);
+                System.out.println("REMOVED DSTORES ? " + f.getDstores().removeIf(dstoreSession -> dstoreSession.getDstorePort() == dstorePort));
                 if(f.getDstores().isEmpty())
                     it.remove();
             }

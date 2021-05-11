@@ -28,10 +28,8 @@ public abstract class Session implements Runnable {
                 singleOperation(line);
             }
         } catch (IOException | InterruptedException e){
-            System.out.println(e.getMessage());
-            System.out.println("(X) SOMETHING WRONG HAPPENED");
-        } //
-        finally {
+            System.out.println("(X) SESSION: SOMETHING WRONG HAPPENED: " + e.getMessage().toUpperCase());
+        } finally {
             try {
                 cleanup();
                 System.out.println("(i) SESSION: CLOSING CONNECTION: " + connection.getPort());
@@ -40,10 +38,6 @@ public abstract class Session implements Runnable {
             catch (IOException e) { e.printStackTrace(); }
         }
     }
-
-//    public void closeConnection() throws IOException {
-//        connection.close();
-//    }
 
     @Override
     public void run(){

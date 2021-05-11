@@ -20,10 +20,11 @@ public class ClientMain {
 		// testClient(cport, timeout, downloadFolder);
 
 		// example to launch a number of concurrent clients, each doing the same operations
-		for (int i = 0; i < 1; i++) {
+		for (int i = 0; i < 30; i++) {
 			new Thread() {
 				public void run() {
-					testClient(cport, timeout, downloadFolder);
+					test2Client(cport, timeout, downloadFolder, uploadFolder);
+//					testClient(cport, timeout, downloadFolder);
 				}
 			}.start();
 		}
@@ -70,6 +71,47 @@ public class ClientMain {
 				try { client.disconnect(); } catch(Exception e) { e.printStackTrace(); }
 		}
 	}
+
+//	public static void test2Client(int cport, int timeout, File downloadFolder, File uploadFolder) {
+//		Client client = null;
+//
+//		try {
+//			client = new Client(cport, timeout, Logger.LoggingType.ON_FILE_AND_TERMINAL);
+//			client.connect();
+//
+//			File fileList[] = uploadFolder.listFiles();
+//			for (int i=0; i<fileList.length; i++) {
+//				File fileToStore = fileList[i];
+//				try {
+//					client.store(fileToStore);
+//				} catch (Exception e) {
+//					System.out.println("Error storing file " + fileToStore);
+//					e.printStackTrace();
+//				}
+//			}
+//
+//			// String list[] = null;
+//			// try { list = list(client); } catch(IOException e) { e.printStackTrace(); }
+//			//
+//			// for (int i = 0; i < list.length/4; i++) {
+//			//     String fileToRemove = list[random.nextInt(list.length)];
+//			//     try {
+//			//         client.remove(fileToRemove);
+//			//     } catch (Exception e) {
+//			//         System.out.println("Error remove file " + fileToRemove);
+//			//         e.printStackTrace();
+//			//     }
+//			// }
+//			//
+//			// try { list = list(client); } catch(IOException e) { e.printStackTrace(); }
+//
+//		} catch(IOException e) {
+//			e.printStackTrace();
+//		} finally {
+//			if (client != null)
+//				try { client.disconnect(); } catch(Exception e) { e.printStackTrace(); }
+//		}
+//	}
 
 	public static void testClient(int cport, int timeout, File downloadFolder) {
 		Client client = null;

@@ -33,6 +33,7 @@ public class MyFile {
     }
 
     public synchronized boolean canStore(){
+//        System.out.println(operation);
         return operation == null || operation == Index.Operation.REMOVE_COMPLETE;
     }
 
@@ -40,7 +41,7 @@ public class MyFile {
         return operation == Index.Operation.STORE_IN_PROGRESS || operation == Index.Operation.REMOVE_IN_PROGRESS;
     }
 
-    public boolean addDstore(ControllerDstoreSession controllerDstoreSession) {
+    public synchronized boolean addDstore(ControllerDstoreSession controllerDstoreSession) {
 //        for (ControllerDstoreSession dstore : dstores) {
 //            if (dstore.getDstorePort() == controllerDstoreSession.getDstorePort()) {
 //                return true;
@@ -49,13 +50,13 @@ public class MyFile {
         return dstores.add(controllerDstoreSession);
     }
 
-    public boolean addDstores(List<ControllerDstoreSession> controllerDstoreSessions) {
+    public synchronized boolean addDstores(List<ControllerDstoreSession> controllerDstoreSessions) {
         dstores.clear();
         dstores.addAll(controllerDstoreSessions);
         return true;
     }
 
-    public boolean removeDstore(ControllerDstoreSession controllerDstoreSession) {
+    public synchronized boolean removeDstore(ControllerDstoreSession controllerDstoreSession) {
         return dstores.remove(controllerDstoreSession);
     }
 
@@ -73,7 +74,7 @@ public class MyFile {
         }
     }
 
-    public void setDstores(List<ControllerDstoreSession> newDstores){
+    public synchronized void setDstores(List<ControllerDstoreSession> newDstores){
         synchronized (dstores){
             dstores.clear();
             dstores.addAll(newDstores);
