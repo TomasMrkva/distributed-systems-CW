@@ -36,6 +36,7 @@ public class ControllerClientSession extends Session {
     }
 
     public void singleOperation(String message) throws InterruptedException {
+        ControllerLogger.getInstance().messageReceived(socket, message);
         if(controller.dstoreSessions.size() < controller.R){
             send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
             return;
@@ -44,7 +45,7 @@ public class ControllerClientSession extends Session {
         switch (messageSplit[0]) {
             case "STORE" -> {
                 if (controller.rebalance.get())
-                    controller.queue.add(new Controller.QueuedOperation(message, socket, this));
+                    controller.clientQueue.add(new Controller.QueuedOperation(message, socket, this));
                 else
                     storeMessage(messageSplit);
             }
@@ -52,7 +53,7 @@ public class ControllerClientSession extends Session {
             case "RELOAD" -> reloadMessage(messageSplit);
             case "REMOVE" -> {
                 if (controller.rebalance.get())
-                    controller.queue.add(new Controller.QueuedOperation(message, socket, this));
+                    controller.clientQueue.add(new Controller.QueuedOperation(message, socket, this));
                 else
                     removeMessage(messageSplit);
             }
@@ -60,6 +61,9 @@ public class ControllerClientSession extends Session {
             default -> recieveLog("Malformed message: " + String.join(" ", messageSplit));
         }
     }
+
+//    @Override
+//    public void cleanup() throws IOException {}
 
     private void storeMessage(String[] messageSplit) throws InterruptedException {
         if (messageSplit.length != 3 || !Common.isNumeric(messageSplit[2]))

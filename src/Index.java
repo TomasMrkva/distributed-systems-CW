@@ -40,9 +40,10 @@ public class Index {
                 List<ControllerDstoreSession> dstores = indexUpdate.get(f.getName());
                 if(dstores == null) throw new AssertionError();
                 f.setDstores(dstores);
+                f.setOperation(Operation.STORE_COMPLETE);
             }
         }
-        System.out.println("INDEX UPDATE FINISHED");
+        System.out.println("(i) INDEX CONFIRMATION: INDEX UPDATE FINISHED");
     }
 
     public boolean setStoreInProgress(String filename, int filesize){
@@ -67,7 +68,8 @@ public class Index {
                     return true;
                 }
             }
-            return false;
+//            return false;
+            throw new AssertionError();
         }
     }
 
@@ -95,12 +97,13 @@ public class Index {
                         f.setOperation(Operation.REMOVE_COMPLETE);
                         return true;
                     } else {
-                        System.out.println("THIS SHOULD NEVER HAPPEN!");
+                        System.err .println("ERROR IN INDEX 98: -> THIS SHOULD NEVER HAPPEN!");
                         return false;
                     }
                 }
             }
-            return false;
+            throw new AssertionError();
+//            return false;
         }
     }
 
@@ -125,7 +128,7 @@ public class Index {
         synchronized (files){
 //            System.out.println("FILESIZE BEFORE REMOVE:" + files.size());
             files.removeIf( myFile -> myFile.getName().equals(filename) );
-            System.out.println("FILESIZE AFTER REMOVE: " + files.size());
+//            System.out.println("FILESIZE AFTER REMOVE: " + files.size());
         }
     }
 
@@ -136,15 +139,28 @@ public class Index {
                     return f.getFilesize();
                 }
             }
-            return null;
+            throw new AssertionError();
+//            return null;
         }
     }
 
-    public List<ControllerDstoreSession> getDstores(String filename){
+    /**
+     * Returns dstores associated with the file
+     * @param filename file which dstores are being requested
+     * @param remove boolean flag to check whether remove opearation is calling this function or not
+     * @return list of controller-dstore sessions or null if conditions are not met
+     */
+    public List<ControllerDstoreSession> getDstores(String filename, boolean remove) {
         synchronized (files) {
             for(MyFile f : files) {
-                if(f.getName().equals(filename)){
-                    return f.getDstores();
+                if (f.getName().equals(filename)){
+                    if (remove && f.getOperation() == Operation.REMOVE_IN_PROGRESS) {
+                        return f.getDstores();
+                    } else if (!remove && f.exists()) {
+                        return f.getDstores();
+                    } else {
+                        return null;
+                    }
                 }
             }
             return null;
@@ -164,7 +180,12 @@ public class Index {
     public List<ControllerDstoreSession> getRDstores(int r){
         List<ControllerDstoreSession> dstores = new ArrayList<>();
         synchronized (files) {
-            files.forEach(myFile -> dstores.addAll(myFile.getDstores()));
+            files.forEach(myFile -> {
+                Operation op = myFile.getOperation();
+                if (op == null || op == Operation.STORE_IN_PROGRESS || op == Operation.STORE_COMPLETE) {
+                    dstores.addAll(myFile.getDstores());
+                }
+            });
         }
         dstores.addAll(controller.dstoreSessions.values());
         Collections.shuffle(dstores);
@@ -174,7 +195,7 @@ public class Index {
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
                         (e1, e2) -> e1, LinkedHashMap::new));
         List<ControllerDstoreSession> result = new ArrayList<>(counts.keySet());
-        System.out.println("RDstores: " + Arrays.toString(result.toArray()));
+        System.out.println("(X) STORE: SELECTED DSTORES " + Arrays.toString(result.toArray()));
         return result.stream().limit(r).collect(Collectors.toList());
     }
 
@@ -196,7 +217,8 @@ public class Index {
                     return true;
                 }
             }
-            return false;
+            throw new AssertionError();
+//            return false;
         }
     }
     public boolean addDstores(String filename, List<ControllerDstoreSession> dstores) {
@@ -207,21 +229,22 @@ public class Index {
                     return true;
                 }
             }
-            return false;
+            throw new AssertionError();
+//            return false;
         }
     }
 
-    public boolean removeDstores(String filename, List<ControllerDstoreSession> dstores) {
-        synchronized (files){
-            for(MyFile f : files) {
-                if(f.getName().equals(filename)){
-                    f.getDstores().removeAll(dstores);
-                    return true;
-                }
-            }
-            return false;
-        }
-    }
+//    public boolean removeDstores(String filename, List<ControllerDstoreSession> dstores) {
+//        synchronized (files){
+//            for(MyFile f : files) {
+//                if(f.getName().equals(filename)){
+//                    f.getDstores().removeAll(dstores);
+//                    return true;
+//                }
+//            }
+//            return false;
+//        }
+//    }
 
 
 

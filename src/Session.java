@@ -27,15 +27,14 @@ public abstract class Session implements Runnable {
             while((line = in.readLine()) != null){
                 singleOperation(line);
             }
-        } catch (IOException e){
-            e.printStackTrace();
-        } catch (InterruptedException e) {
-            System.out.println("SOMETHING WRONG HAPPENED");
-            e.printStackTrace();
-        } finally {
+        } catch (IOException | InterruptedException e){
+            System.out.println(e.getMessage());
+            System.out.println("(X) SOMETHING WRONG HAPPENED");
+        } //
+        finally {
             try {
                 cleanup();
-                System.out.println("CLOSING CONNECTION: " + connection.getPort());
+                System.out.println("(i) SESSION: CLOSING CONNECTION: " + connection.getPort());
                 connection.close();
             }
             catch (IOException e) { e.printStackTrace(); }
@@ -48,7 +47,7 @@ public abstract class Session implements Runnable {
 
     @Override
     public void run(){
-        System.out.println("Controller -> " + name + " connection established");
+//        System.out.println("Controller -> " + name + " connection established");
         try {
             singleOperation(START_MESSAGE);
             loop();

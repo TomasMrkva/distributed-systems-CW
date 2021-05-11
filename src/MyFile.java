@@ -41,11 +41,11 @@ public class MyFile {
     }
 
     public boolean addDstore(ControllerDstoreSession controllerDstoreSession) {
-        for (ControllerDstoreSession dstore : dstores) {
-            if (dstore.getDstorePort() == controllerDstoreSession.getDstorePort()) {
-                return true;
-            }
-        }
+//        for (ControllerDstoreSession dstore : dstores) {
+//            if (dstore.getDstorePort() == controllerDstoreSession.getDstorePort()) {
+//                return true;
+//            }
+//        }
         return dstores.add(controllerDstoreSession);
     }
 
@@ -60,6 +60,14 @@ public class MyFile {
     }
 
     public List<ControllerDstoreSession> getDstores(){
+//        List<ControllerDstoreSession> returnList = new ArrayList<>();
+//        synchronized (dstores){
+//            for (ControllerDstoreSession cd : dstores) {
+//                boolean contains = returnList.stream().anyMatch(d -> d.getDstorePort() == cd.getDstorePort());
+//                if (!contains) returnList.add(cd);
+//            }
+//            return returnList;
+//        }
         synchronized (dstores){
             return dstores;
         }

@@ -1,10 +1,8 @@
 import java.io.*;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.Arrays;
 
-/**
- * Controller -> Dstore connection
- */
 public class ControllerDstoreSession extends Session {
 
     private final int dstorePort;
@@ -38,12 +36,13 @@ public class ControllerDstoreSession extends Session {
         String filename;
         switch (messageSplit[0]){
             case "JOIN":
-                controller.dstoreSessions.put(dstorePort, this);
                 System.out.println("Dstores: " + controller.dstoreSessions.size());
+                new Thread( () -> controller.joinOperation(dstorePort, this)).start();
                 break;
             case "STORE_ACK":
                 filename = messageSplit[1];
 //                System.out.println("STORE_ACK " + "received from port: " + dstorePort);
+//                controller.index.addDstore(filename, this);   //TODO: might need to revisit this
                 controller.addStoreAck(filename, this);
                 break;
             case "REMOVE_ACK":
@@ -52,9 +51,12 @@ public class ControllerDstoreSession extends Session {
                 controller.addRemoveAck(filename, this);
                 break;
             case "LIST":
-                controller.rebalanceFiles.put(dstorePort, Arrays.asList(messageSplit).subList(1, messageSplit.length));
+                controller.rebalanceFiles.put(dstorePort, new ArrayList<>(Arrays.asList(messageSplit).subList(1, messageSplit.length)));
                 controller.rebalanceLatch.countDown();
                 System.out.println("RECEIVED LIST : " + Arrays.asList(messageSplit).subList(1, messageSplit.length) + controller.rebalanceLatch.getCount());
+                break;
+            case "REBALANCE_COMPLETE":
+                controller.rebalanceCompleteLatch.countDown();
                 break;
             default:
                 System.out.println("Unrecognized command in controllerDstoreSession: " +  message);
@@ -62,24 +64,19 @@ public class ControllerDstoreSession extends Session {
         }
     }
 
-    private void fileList(String[] fileList) {
-        System.out.println("File list for port: " + dstorePort + " is: " + Arrays.toString(fileList));
-        numberOfFiles = fileList.length;
-    }
+//    private void fileList(String[] fileList) {
+//        System.out.println("File list for port: " + dstorePort + " is: " + Arrays.toString(fileList));
+//        numberOfFiles = fileList.length;
+//    }
 
     public void closeSession() throws IOException {
         dstoreSocket.close();
     }
 
     @Override
-    public void cleanup() throws IOException {
-        System.out.println("SOMETHING WRONG HAPPENED");
-        File file = new File("errors.log");
-        Writer fileWriter = new FileWriter(file,true);
-        fileWriter.write("1\n");
-        fileWriter.close();
+    public void cleanup() {
+//        System.out.println("CLOSING DSTORE" + dstorePort);
         controller.dstoreClosedNotify(dstorePort);
-        super.cleanup();
     }
 
     @Override

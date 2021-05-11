@@ -2,8 +2,11 @@ import java.io.*;
 import java.io.File;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Dstore {
 
@@ -19,35 +22,31 @@ public class Dstore {
         public int getFilesize() {
             return filesize;
         }
-
     }
 
-    final int TIMEOUT;
-    final String FILE_FOLDER;
-    final Socket CSOCKET;
-    final ServerSocket DSOCKET;
-    final String FOLDER_NAME;
-    final Set<FileRecord> files;
-    final File dir;
-    final Object fileLock = new Object();
+    final private int TIMEOUT;
+    final private String FILE_FOLDER;
+    final private Socket CSOCKET;
+    final private ServerSocket DSOCKET;
+    final private Set<FileRecord> files;
+    final private ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
+    Map<String, List<Integer>> filesToSend;
 
 
-    public Dstore(int port, int cport, int timeout, String file_folder) throws Exception {
+    public Dstore(int dPort, int cPort, int timeout, String file_folder) throws IOException {
         TIMEOUT = timeout;
         FILE_FOLDER = file_folder;
-        CSOCKET = new Socket("localhost" ,cport);
-        DSOCKET = new ServerSocket(port);
-        FOLDER_NAME = file_folder;
-        DstoreLogger.init(Logger.LoggingType.ON_FILE_AND_TERMINAL, port);
+        CSOCKET = new Socket("localhost", cPort);
+        DSOCKET = new ServerSocket(dPort);
+        files = new HashSet<>();
+        DstoreLogger.init(Logger.LoggingType.ON_FILE_AND_TERMINAL, dPort);
+        setup(new File(file_folder));
         controllerCommunication();
-        send("JOIN " + port, CSOCKET);
-        files = ConcurrentHashMap.newKeySet();
-        dir = new File(FOLDER_NAME);
-        setup();
+        send("JOIN " + dPort, CSOCKET);
         run();
     }
 
-    private void setup() {
+    private void setup(File dir) {
         if (!dir.exists()){
             dir.mkdirs();
         } else {
@@ -57,7 +56,6 @@ public class Dstore {
                 File currentFile = new File(dir.getPath(),s);
                 currentFile.delete();
             }
-            files.clear();
         }
     }
 
@@ -73,47 +71,62 @@ public class Dstore {
                         case "REMOVE" -> removeFile(lineSplit);
                         case "LIST" -> list();
                         case "REBALANCE" -> rebalance(lineSplit);
-                        default -> System.out.println("Unrecognised command " + line);
+                        default -> System.out.println("Unrecognised command for DSTORE: " + line);
                     }
                 }
             } catch (IOException e) {e.printStackTrace();}
         }).start();
     }
 
-    List<String> filesToRemove;
-    Map<String, List<Integer>> filesToSend;
-    private void rebalance(String[] lineSplit) {
+    private void rebalance(String[] lineSplit) throws IOException {
         parseRemove( parseAdd(lineSplit) );
-        if (!filesToRemove.isEmpty()) {
-            for (String removeFile : filesToRemove) {
-                files.removeIf( f -> f.getName().equals(removeFile) );
-            }
-        }
-        if (filesToSend.isEmpty()){
-            return;
-        } else {
-//            CountDownLatch latch = new CountDownLatch(filesToSend.values().size());
-            rebalanceSend();
-//            try { latch.await(); }
+        System.out.println("REBALANCE: FILES TO SEND");
+        filesToSend.entrySet().forEach(entry -> {
+            System.out.println(entry.getKey() + " " + entry.getValue());
+        });
+        System.out.println("REBALANCE: FILES TO REMOVE");
+        System.out.println(Arrays.toString(filesToRemove.toArray()));
+
+        if (!filesToSend.isEmpty()){
+            CountDownLatch latch = new CountDownLatch(filesToSend.values().size());
+            rebalanceSend(latch);
+            System.out.println("FINISHED SENDING");
+//            try { latch.await(); }      //TODO: ADD TIMEOUT
 //            catch (InterruptedException e) { e.printStackTrace(); };
         }
-        filesToRemove.forEach( file -> files.removeIf( record -> record.getName().equals(file)));
+        if (!filesToRemove.isEmpty()) {
+            readWriteLock.writeLock().lock();
+            Iterator<FileRecord> it = files.iterator();
+            while (it.hasNext()) {
+                FileRecord f = it.next();
+                if (filesToRemove.contains(f.getName())) {
+                    boolean deleted = f.delete();
+                    System.out.println("DELETING: " + f.getName() + " " + deleted);
+                    it.remove();
+                }
+            }
+            readWriteLock.writeLock().unlock();
+        }
+        send(Protocol.REBALANCE_COMPLETE_TOKEN, CSOCKET);
     }
 
-    private void rebalanceSend() {
+    private void rebalanceSend(CountDownLatch latch) {
         filesToSend.forEach( (filename, dstores) -> {
+//            System.out.println(filename + " " + Arrays.toString(dstores.toArray()));
             for (int port : dstores) {
                 try {
                     Socket socket = new Socket("localhost", port);
+                    System.out.println("CREATED A SOCKET PORT: " + port);
                     new Thread( () -> {
-                        try { sendRebalanceFile(socket, filename); }
+                        try { sendRebalanceFile(socket, filename, latch); }
                         catch (IOException e) { e.printStackTrace();}
                     }).start();
-                    new Thread( () -> {
-                        try {
-                            send(Protocol.REBALANCE_STORE_TOKEN + " " + filename + " " + getFile(filename).getFilesize(), socket);
-                        } catch (IOException e) { e.printStackTrace(); }
-                    }).start();
+                    send(Protocol.REBALANCE_STORE_TOKEN + " " + filename + " " + getFile(filename).getFilesize(), socket);
+//                    new Thread( () -> {
+//                        try {
+//                            send(Protocol.REBALANCE_STORE_TOKEN + " " + filename + " " + getFile(filename).getFilesize(), socket);
+//                        } catch (IOException e) { e.printStackTrace(); }
+//                    }).start();
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
@@ -121,45 +134,69 @@ public class Dstore {
         });
     }
 
-    private void sendRebalanceFile(Socket socket, String filename) throws IOException {
+    private void sendRebalanceFile(Socket socket, String filename, CountDownLatch latch) throws IOException {
         BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-        String line = in.readLine();
-        socket.shutdownInput();
+//        socket.setSoTimeout(TIMEOUT);
+        String line;
+        try {
+            line = in.readLine();
+            System.out.println(line);
+        } catch (Exception e2) {
+            System.out.println("WEIRD EXEPTION");
+//            latch.countDown();
+            return;
+        }
+//        socket.shutdownInput();
         if(!line.equals(Protocol.ACK_TOKEN)) {
-            throw new AssertionError();
+//            latch.countDown();
+            System.out.println("WRONG ACK VALUE");
+            return;
         } else {
-            File file = new File(filename);
-            InputStream inf = new FileInputStream(file);
+            InputStream inf;
             OutputStream outf = socket.getOutputStream();
+            try {
+                System.out.println("HERE");
+                File file = new File(FILE_FOLDER + "/" + filename);
+                System.out.println(file.getName());
+                inf = new FileInputStream(file);
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+//                latch.countDown();
+                return;
+            }
+            System.out.println("BEFORE OUTPUT STREAM");
+
+            System.out.println("STARTED READING BYTES");
             byte[] bytes = inf.readNBytes(getFile(filename).getFilesize());
+            System.out.println("FINISHED READING BYTES");
             outf.write(bytes);
             inf.close();
             outf.close();
+            System.out.println("SUCCESSFULY SENT FILE: " + filename + " TO PORT: " + socket.getPort() );
         }
-//        latch.countDown();
-        send(Protocol.REMOVE_COMPLETE_TOKEN, socket);
+        latch.countDown();
     }
 
     private FileRecord getFile(String filename) {
+        readWriteLock.readLock().lock();
         for (FileRecord f : files) {
             if (f.getName().equals(filename))
                 return f;
         }
+        readWriteLock.readLock().unlock();
         throw new AssertionError();
     }
 
+    List<String> filesToRemove;
     private void parseRemove(String[] msg) {
         filesToRemove = new ArrayList<>();
         int numberToRemove;
-        try {
-            numberToRemove = Integer.parseInt(msg[0]);
-        } catch (NumberFormatException e) {
-            return;
-        }
+        try { numberToRemove = Integer.parseInt(msg[0]); }
+        catch (NumberFormatException e) { return; }
         for (int i = 1; i <= numberToRemove; i++) {
             filesToRemove.add(msg[i]);
         }
-        System.out.println(Arrays.toString(filesToRemove.toArray()));
+//        System.out.println(Arrays.toString(filesToRemove.toArray()));
     }
 
     private String[] parseAdd(String[] lineSplit) {
@@ -188,15 +225,22 @@ public class Dstore {
 //            sendMap.forEach((key, value) -> System.out.println(key + " " + value));
             return Arrays.copyOfRange(lineSplit,j+1,lineSplit.length);
         } catch (NumberFormatException e) {
-            return lineSplit;
+            filesToSend.clear();
+            return Arrays.copyOfRange(lineSplit,2,lineSplit.length);
         }
     }
 
     private void list() throws IOException {
         StringBuilder fileList = new StringBuilder(Protocol.LIST_TOKEN);
-        files.forEach(fileRecord -> fileList.append(" ").append(fileRecord.getName()));
+        readWriteLock.readLock().lock();
+        if (!files.isEmpty()) {
+            files.forEach(fileRecord -> fileList.append(" ").append(fileRecord.getName()));
+        }
+        readWriteLock.readLock().unlock();
+        System.out.println("SENDING LIST: " + fileList);
         send(fileList.toString(), CSOCKET);
     }
+
 
     public void send(String message, Socket socket) throws IOException {
         PrintWriter out = new PrintWriter(socket.getOutputStream());
@@ -204,6 +248,8 @@ public class Dstore {
         out.flush();
         DstoreLogger.getInstance().messageSent(socket, message);
     }
+
+// Controller - Client messages
 
     private void run() throws IOException {
         while (true){
@@ -215,17 +261,16 @@ public class Dstore {
                     String line;
                     while ((line = in.readLine()) != null){
                         DstoreLogger.getInstance().messageReceived(client, line);
-
                         String[] lineSplit = line.split(" ");
                         switch (lineSplit[0]) {
                             case "STORE" -> store(lineSplit, client, false);
                             case "LOAD_DATA" -> loadData(lineSplit, client);
                             case "REBALANCE_STORE" -> store(lineSplit, client, true);
-                            default -> System.out.println("Unrecognised command " + line);
+                            default -> System.out.println("Unrecognised command for DSTORE: " + line);
                         }
                     }
                 } catch (IOException e) {
-                    System.err.println(e.getMessage());
+                    System.out.println( "(X) " + e.getMessage().toUpperCase());
                 }
             }).start();
         }
@@ -236,18 +281,20 @@ public class Dstore {
     private void store(String[] lineSplit, Socket client, boolean rebalance) throws IOException {
         if (!isStoreMessageCorrect(lineSplit)) return;
         boolean exists = false;
+        readWriteLock.readLock().lock();
         for (FileRecord f : files) {
             if (f.getName().equals(lineSplit[1])){
                 exists = true;
                 break;
             }
         }
+        readWriteLock.readLock().unlock();
         if (!exists) {
             send(Protocol.ACK_TOKEN, client);
             if(!storeAction(client, lineSplit[1], Integer.parseInt(lineSplit[2])))
                 return;
         } else {
-            System.out.println("File already exists, closing socket");
+            System.out.println("File already exists, closing socket...");
             client.close();
         }
 //        files.forEach( file -> System.out.println(file.getName() + " : " + file.getFilesize()));
@@ -273,17 +320,22 @@ public class Dstore {
         try (OutputStream outf = new FileOutputStream(file)){
             Future<byte[]> future = executor.submit(task);
             byte[] bytes = future.get(TIMEOUT, TimeUnit.MILLISECONDS);
-            if(bytes.length != filesize)
+            if(bytes.length != filesize) {
+                System.out.println("WRONG BYTE VALUES");
                 return false;
+            }
             outf.write(bytes);
+            readWriteLock.writeLock().lock();
             files.add(file);
+            System.out.println(file.getName() + " was added" );
+            readWriteLock.writeLock().unlock();
             return true;
         } catch (ExecutionException | InterruptedException | IOException e){
             e.printStackTrace();
-            System.out.println("Unexpected stuff happened");
+//            System.out.println("Unexpected stuff happened");
             return false;
         } catch (TimeoutException e) {
-            System.out.println("Timeout expired");
+            System.out.println("(X) TIMEOUT EXPIRED WHILE TRYING TO STORE");
             return false;
         }
     }
@@ -294,6 +346,7 @@ public class Dstore {
         String filename = loadSplit[1];
         boolean exists = false;
         int filesize = 0;
+        readWriteLock.readLock().lock();
         for (FileRecord f : files){
             if (f.getName().equals(filename)){
                 exists = true;
@@ -301,8 +354,9 @@ public class Dstore {
                 break;
             }
         }
+        readWriteLock.readLock().unlock();
         if(!exists){
-            System.out.println("Dstore - File does not exist: " + filename);
+            System.out.println("(X) LOAD ERROR - FILE: [" + filename + "] DOES NOT EXIST");
             client.close();
         } else {
             File file = new FileRecord(filename, filesize);
@@ -327,18 +381,20 @@ public class Dstore {
         if (!isRemoveMessageCorrect(lineSplit))
             return;
         String filename = lineSplit[1];
-        System.out.println("Before removing the file: " + files.size());
+//        System.out.println("Before removing the file: " + files.size());
+        readWriteLock.writeLock().lock();
         boolean removed = files.removeIf( fileRecord -> fileRecord.getName().equals(filename));
+        readWriteLock.writeLock().unlock();
         if (!removed) {
             send(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN + " " + filename, CSOCKET);
             return;
         }
         File file = new File(FILE_FOLDER + "/" + filename);
         if (file.delete())
-            System.out.println("File removed successfully");
+            System.out.println("(i) REMOVE CONFIRMATION: File removed successfully");
         else
-            System.out.println("Failed to remove a file");
-        System.out.println("After removing the file: " + files.size());
+            System.out.println("(X) REMOVE ERROR: Failed to remove a file");
+//        System.out.println("After removing the file: " + files.size());
         send(Protocol.REMOVE_ACK_TOKEN + " " + filename, CSOCKET);
     }
 
