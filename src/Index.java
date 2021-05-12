@@ -22,6 +22,7 @@ public class Index {
     }
 
     public void saveFutureUpdate(HashMap<String,List<Integer>> indexUpdate) {
+        this.indexUpdate.clear();
         indexUpdate.forEach( (filename, ports) -> {
             List<ControllerDstoreSession> dstores = new ArrayList<>();
             for (Integer port : ports) {
@@ -34,21 +35,35 @@ public class Index {
         });
     }
 
-    public void updateIndex() {
+    public void print() {
         synchronized (files) {
             for (MyFile f : files) {
-                List<ControllerDstoreSession> dstores = indexUpdate.get(f.getName());
-                if (dstores == null) {
-                    System.out.println("(X) INDEX:42 SOMETHING WENT WRONG");
-                }
-                f.setDstores(dstores);
-                f.setOperation(Operation.STORE_COMPLETE);
+                System.out.println(f.getName() + " " + f.getSize() + " " + f.getOperation());
+                f.getDstores().forEach( d -> System.out.print(" " + d.getDstorePort()));
             }
         }
     }
 
+    public void updateIndex() {
+        synchronized (files) {
+            Iterator<MyFile> it = files.iterator();
+            while (it.hasNext()) {
+                MyFile f = it.next();
+                List<ControllerDstoreSession> dstores = indexUpdate.get(f.getName());
+                if (dstores == null) {
+                    it.remove();
+                    System.out.println("(X) INDEX:42 SOMETHING WENT WRONG");
+                } else {
+                    f.setDstores(dstores);
+                    f.setOperation(Operation.STORE_COMPLETE);
+                }
+            }
+            indexUpdate.clear();
+        }
+    }
+
     public boolean setStoreInProgress(String filename, int filesize){
-        synchronized (files){
+        synchronized (files) {
             for(MyFile f : files) {
                 if(f.getName().equals(filename)){
                     System.out.println(f.getName() + " " + f.getOperation());
@@ -138,7 +153,7 @@ public class Index {
         synchronized (files){
             for(MyFile f : files) {
                 if(f.getName().equals(filename)){
-                    return f.getFilesize();
+                    return f.getSize();
                 }
             }
             throw new AssertionError();
@@ -155,7 +170,7 @@ public class Index {
     public List<ControllerDstoreSession> getDstores(String filename, boolean remove) {
         synchronized (files) {
             for(MyFile f : files) {
-                if (f.getName().equals(filename)){
+                if (f.getName().equals(filename)) {
                     if (remove && f.getOperation() == Operation.REMOVE_IN_PROGRESS) {
                         return f.getDstores();
                     } else if (!remove && f.exists()) {
@@ -191,7 +206,7 @@ public class Index {
                 }
             });
         }
-        dstores.addAll(controller.dstoreSessions.values());
+        dstores.addAll(new ArrayList<>(controller.dstoreSessions.values()));
         Collections.shuffle(dstores);
         Map<ControllerDstoreSession, Long> counts = dstores.stream().collect(Collectors.groupingBy(e -> e, Collectors.counting()));
         counts = counts.entrySet().stream()
@@ -227,6 +242,7 @@ public class Index {
     }
     public boolean addDstores(String filename, List<ControllerDstoreSession> dstores) {
         synchronized (files){
+            dstores.removeIf(cd -> controller.dstoreSessions.get(cd.getDstorePort()) == null);
             for(MyFile f : files) {
                 if(f.getName().equals(filename)){
                     f.addDstores(dstores);

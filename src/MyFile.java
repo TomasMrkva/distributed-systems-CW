@@ -81,7 +81,7 @@ public class MyFile {
         }
     }
 
-    public int getFilesize() {
+    public int getSize() {
         return filesize;
     }
 

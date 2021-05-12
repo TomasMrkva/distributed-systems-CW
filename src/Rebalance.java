@@ -359,10 +359,10 @@ public class Rebalance implements Runnable {
             correctFilesSize.put(originPort, originFiles);
             it.remove();
         }
-        underLimitFiles.forEach((k, v) -> {
-            if (v.size() == floor) correctFilesSize.put(k, v);
+        underLimitFiles.forEach( (k, v) -> {
+            if (v.size() >= floor) correctFilesSize.put(k, v);
         });
-        underLimitFiles.entrySet().removeIf(entries -> entries.getValue().size() == floor);
+        underLimitFiles.entrySet().removeIf(entries -> entries.getValue().size() >= floor);
         if (!underLimitFiles.isEmpty()) {
             System.out.println("(i) Retrying to distribute files");
             fillUnderLimitFiles();
@@ -379,7 +379,6 @@ public class Rebalance implements Runnable {
         if(ceilFiles.isEmpty())
             return;
         underLimitFiles.forEach( (destPort, destFiles) -> {
-
             while (destFiles.size() < floor) {
                 boolean found = false;
                 Iterator<Map.Entry<Integer, List<String>>> it = ceilFiles.entrySet().iterator();                        // List<OriginFiles> it

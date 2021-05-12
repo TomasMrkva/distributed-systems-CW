@@ -3,9 +3,6 @@ import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.*;
 
-/**
- * Controller -> Client connection
- */
 public class ControllerClientSession extends Session {
 
     private final PrintWriter out;
