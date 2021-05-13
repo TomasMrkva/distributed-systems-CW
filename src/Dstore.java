@@ -25,7 +25,7 @@ public class Dstore {
     final public String FILE_FOLDER;
     final private Socket CSOCKET;
     final private ServerSocket DSOCKET;
-    final public ConcurrentHashMap<String, FileRecord> files;
+    final public Map<String, FileRecord> files;
     final private PrintWriter out;
 
     public Dstore(int dPort, int cPort, int timeout, String file_folder) throws IOException {
@@ -34,7 +34,7 @@ public class Dstore {
         CSOCKET = new Socket("localhost", cPort);
         out = new PrintWriter(CSOCKET.getOutputStream());
         DSOCKET = new ServerSocket(dPort);
-        files = new ConcurrentHashMap<>();
+        files = Collections.synchronizedMap(new HashMap<>());
         DstoreLogger.init(Logger.LoggingType.ON_FILE_AND_TERMINAL, dPort);
         setup(new File(file_folder));
         controllerCommunication();
@@ -47,7 +47,7 @@ public class Dstore {
             dir.mkdirs();
         } else {
             String[] entries = dir.list();
-            System.out.println("Removing files: " + Arrays.toString(entries));
+//            System.out.println("Removing files: " + Arrays.toString(entries));
             for(String s: entries){
                 File currentFile = new File(dir.getPath(),s);
                 currentFile.delete();
@@ -177,19 +177,21 @@ public class Dstore {
         try (OutputStream outf = new FileOutputStream(file)) {
             Future<byte[]> future = executor.submit(task);
             byte[] bytes = future.get(TIMEOUT, TimeUnit.MILLISECONDS);
-            if (bytes.length == 0) {
-                System.out.println("(X) DSTORE ERROR, COULD NOT READ FILE DATA FROM STREAM");
+            if (bytes.length == 0 && filesize != 0) {
+//                System.out.println("(X) DSTORE ERROR, COULD NOT READ FILE DATA FROM STREAM " + filename);
+                file.delete();
                 return false;
             }
             outf.write(bytes);
             files.put(filename,file);
-            System.out.println("(i)" + file.getName() + " WAS ADDED" );
+//            System.out.println("(i)" + file.getName() + " WAS ADDED" );
             return true;
         } catch (ExecutionException | InterruptedException | IOException e){
             e.printStackTrace();
             return false;
         } catch (TimeoutException e) {
             System.out.println("(X) TIMEOUT EXPIRED WHILE TRYING TO STORE");
+            file.delete();
             return false;
         }
     }
@@ -212,8 +214,6 @@ public class Dstore {
             client.close();
         } else {
             File file = new File(FILE_FOLDER + "/" + filename);
-//            System.out.println(file.exists());
-//            System.out.println(file.length());
             InputStream inf = new FileInputStream(file);
             OutputStream outf = client.getOutputStream();
             byte[] bytes = inf.readNBytes(f.getFilesize());
@@ -241,10 +241,11 @@ public class Dstore {
             return;
         }
         File file = new File(FILE_FOLDER + "/" + filename);
-        if (file.delete())
-            System.out.println("(i) REMOVE CONFIRMATION: File removed successfully");
-        else
-            System.out.println("(X) REMOVE ERROR: Failed to remove a file");
+        file.delete();
+//        if (file.delete())
+//            System.out.println("(i) REMOVE CONFIRMATION: File removed successfully");
+//        else
+//            System.out.println("(X) REMOVE ERROR: Failed to remove a file");
         sendToController(Protocol.REMOVE_ACK_TOKEN + " " + filename);
     }
 

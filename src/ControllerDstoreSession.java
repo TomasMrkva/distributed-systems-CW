@@ -38,7 +38,8 @@ public class ControllerDstoreSession extends Session {
                     System.out.println("Malformed JOIN message: " + message);
                     break;
                 }
-                System.out.println("Dstores: " + controller.dstoreSessions.size());
+                ControllerLogger.getInstance().dstoreJoined(dstoreSocket, dstorePort);
+//                System.out.println("Dstores: " + controller.dstoreSessions.size());
                 new Thread( () -> controller.joinOperation(dstorePort, this)).start();
                 break;
             case "STORE_ACK":

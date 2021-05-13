@@ -29,11 +29,11 @@ public abstract class Session implements Runnable {
             }
         } catch (IOException | InterruptedException e){
 //            System.out.println("(X) SESSION: SOMETHING WRONG HAPPENED: " + e.getMessage().toUpperCase());
-            e.printStackTrace();
+//            e.printStackTrace();
         } finally {
             try {
                 cleanup();
-                System.out.println("(i) SESSION: CLOSING CONNECTION: " + connection.getPort());
+//                System.out.println("(i) SESSION: CLOSING CONNECTION: " + connection.getPort());
                 connection.close();
             }
             catch (IOException e) { e.printStackTrace(); }
@@ -47,7 +47,7 @@ public abstract class Session implements Runnable {
             singleOperation(START_MESSAGE);
             loop();
         } catch (InterruptedException e) {
-            e.printStackTrace();
+//            e.printStackTrace();
         }
     }
 

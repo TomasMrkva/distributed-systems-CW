@@ -53,7 +53,7 @@ public class Index {
                 List<ControllerDstoreSession> dstores = indexUpdate.get(f.getName());
                 if (dstores == null) {
                     it.remove();
-                    System.out.println("(X) INDEX:42 SOMETHING WENT WRONG");
+//                    System.out.println("(X) INDEX:42 SOMETHING WENT WRONG");
                 } else {
                     f.setDstores(dstores);
                     f.setOperation(Operation.STORE_COMPLETE);
@@ -83,13 +83,13 @@ public class Index {
         }
     }
 
-    public boolean setStoreComplete(String filename){
+    public void setStoreComplete(String filename){
         synchronized (files){
             IndexFile f = files.get(filename);
-            if (f == null) throw new AssertionError();
-            f.setOperation(Operation.STORE_COMPLETE);
-            return true;
-//            for(IndexFile f : files) {
+//            if (f == null) throw new AssertionError();
+            if (f != null)
+                f.setOperation(Operation.STORE_COMPLETE);
+            //            for(IndexFile f : files) {
 //                if(f.getName().equals(filename)){
 //                    f.setOperation(Operation.STORE_COMPLETE);
 //                    return true;
@@ -111,7 +111,7 @@ public class Index {
 //                    }
 //                }
                 IndexFile f = files.get(filename);
-                if (f == null) throw new AssertionError();
+                if (f == null) return false;
                 else if(!f.exists()) {
                     return false;
                 } else {
@@ -177,8 +177,9 @@ public class Index {
 //                    return f.getSize();
 //                }
                 IndexFile f = files.get(filename);
-                if (f == null) throw new AssertionError();
-                else return f.getSize();
+                return f.getSize();
+//                if (f == null) throw new AssertionError();
+//                else return f.getSize();
             }
 
 //            return null;
@@ -242,7 +243,7 @@ public class Index {
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
                         (e1, e2) -> e1, LinkedHashMap::new));
         List<ControllerDstoreSession> result = new ArrayList<>(counts.keySet());
-        System.out.println("(X) STORE: SELECTED DSTORES " + Arrays.toString(result.toArray()));
+//        System.out.println("(X) STORE: SELECTED DSTORES " + Arrays.toString(result.toArray()));
         return result.stream().limit(r).collect(Collectors.toList());
     }
 
@@ -279,11 +280,11 @@ public class Index {
 //                }
 //            }
             IndexFile f = files.get(filename);
-            if (f == null) throw new AssertionError();
-            else {
+//            if (f == null) throw new AssertionError();
+            if (f != null) {
                 f.setDstores(dstores);
                 return true;
-            }
+            } return false;
 
 //            return false;
         }
@@ -311,7 +312,7 @@ public class Index {
             Iterator<IndexFile> it = files.values().iterator();
             while(it.hasNext()){
                 IndexFile f = it.next();
-                System.out.println("REMOVED DSTORES ? " + f.getDstores().removeIf(dstoreSession -> dstoreSession.getDstorePort() == dstorePort));
+//                System.out.println("REMOVED DSTORES ? " + f.getDstores().removeIf(dstoreSession -> dstoreSession.getDstorePort() == dstorePort));
                 if(f.getDstores().isEmpty())
                     it.remove();
             }

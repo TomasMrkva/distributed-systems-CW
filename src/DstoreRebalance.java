@@ -68,26 +68,27 @@ public class DstoreRebalance {
 
     private void sendRebalanceFile(Socket socket, String filename, CountDownLatch latch) throws IOException {
         BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-        socket.setSoTimeout(dstore.TIMEOUT);
         String line;
         try {
+            socket.setSoTimeout(dstore.TIMEOUT);
             line = in.readLine();
             DstoreLogger.getInstance().messageReceived(socket, line);
-//            System.out.println(line);
         } catch (Exception e) {
-            e.printStackTrace();
+//            e.printStackTrace();
             latch.countDown();
             in.close();
             return;
         }
-        if (line == null) {
-            throw new AssertionError("(!!!) LINE TO READ WAS NULL");
-        }
+        try { socket.setSoTimeout(0); }
+        catch (Exception e) {}
         socket.shutdownInput();
-        if(!line.equals(Protocol.ACK_TOKEN)) {
+
+        if (line == null) {
             System.out.println("Malformed ACK message: " + line);
             in.close();
-//            throw new AssertionError("(!!!) LINE TO READ WAS NOT CORRECT");
+        } else if(!line.equals(Protocol.ACK_TOKEN)) {
+            System.out.println("Malformed ACK message: " + line);
+            in.close();
         } else {
             InputStream inf;
             OutputStream outf = socket.getOutputStream();

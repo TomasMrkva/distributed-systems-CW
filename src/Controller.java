@@ -99,12 +99,14 @@ public class Controller {
                 try {
                     String line = new BufferedReader(new InputStreamReader(client.getInputStream())).readLine();
                     if (line == null) {
-                        System.out.println("(X) NULL MESSAGE SENT");
+//                        System.out.println("(X) NULL MESSAGE SENT");
                     } else {
                         String[] lineSplit = line.split(" ");
                         if (lineSplit[0].equals(Protocol.JOIN_TOKEN)) {
-                            int dstorePort = Integer.parseInt(lineSplit[1]);
-                            new Thread(new ControllerDstoreSession(dstorePort, client, this, line)).start();
+                            try {
+                                int dstorePort = Integer.parseInt(lineSplit[1]);
+                                new Thread(new ControllerDstoreSession(dstorePort, client, this, line)).start();
+                            } catch (NumberFormatException e) { System.out.println("Malformed JOIN message: " + line); }
                         } else {
 //                            System.out.println("LINE " + line + "QUEUED");
                             clientQueue.add(new QueuedOperation(line, client, null));
@@ -146,7 +148,7 @@ public class Controller {
         if (R > 1) {
             if (rebalance.compareAndSet(false, true)) {
                 dstoreSessions.put(dstorePort, session);
-                System.out.println("(+) DSTORES: " + dstoreSessions.size());
+//                System.out.println("(+) DSTORES: " + dstoreSessions.size());
                 rebalance(true);
             } else {
 //                System.out.println("QUEING DSTORE");
@@ -161,7 +163,7 @@ public class Controller {
         synchronized (dstoresLock) {
             dstoreSessions.remove(dstorePort);
             index.removeDstore(dstorePort);
-            System.out.println("(-) DSTORES: " + dstoreSessions.mappingCount());
+//            System.out.println("(-) DSTORES: " + dstoreSessions.mappingCount());
         }
     }
 
@@ -211,37 +213,37 @@ public class Controller {
         if (rebalance.compareAndSet(false, true)) {
             rebalance(false);
         } else {
-            System.out.println("(X) PREVIOUS REBALANCE STILL IN PROGRESS");
+//            System.out.println("(X) PREVIOUS REBALANCE STILL IN PROGRESS");
         }
     }
 
     public void rebalance(boolean join) {
         synchronized (rebalanceLock) {
-            System.out.println("(i) REBALANCE STARTING");
+//            System.out.println("(i) REBALANCE STARTING");
             while (!index.readyToRebalance()) {
 //                System.out.println("WAITING");
             }
 //                try { Thread.sleep(10); }
 //                catch (InterruptedException e) {};
-            System.out.println("(i) REBALANCE: FINISHED WAITING FOR ANY STORE/REMOVE");
+//            System.out.println("(i) REBALANCE: FINISHED WAITING FOR ANY STORE/REMOVE");
             rebalanceAction();
 //            System.out.println("(i) CHECKING DSTORE QUEUE");
 //                System.out.println("(i) REBALANCE: FINISHED MAIN REBALANCE");
             while (!dstoreQueue.isEmpty()) {
                 QueuedOperation q = dstoreQueue.poll();
-                System.out.println("UNQUEUED: " + q.getMessage());
+//                System.out.println("UNQUEUED: " + q.getMessage());
                 dstoreSessions.put(q.getPort(), q.getDstoreSession());
-                System.out.println("(+) DSTORES: " + dstoreSessions.size());
+//                System.out.println("(+) DSTORES: " + dstoreSessions.size());
                 rebalanceAction();
             }
-            System.out.println("(i) REBALANCE: FINISHED");
+//            System.out.println("(i) REBALANCE: FINISHED");
 
             if (join) {
                 scheduler.shutdownNow();
-                System.out.println("JOIN: REMOVED SCHEDULED: " + scheduler.isTerminated());
+//                System.out.println("JOIN: REMOVED SCHEDULED: " + scheduler.isTerminated());
             } else {
                 scheduler.shutdown();
-                System.out.println("AUTOMATIC: REMOVED SCHEDULED: " + scheduler.isTerminated());
+//                System.out.println("AUTOMATIC: REMOVED SCHEDULED: " + scheduler.isTerminated());
             }
             scheduler = Executors.newSingleThreadScheduledExecutor();
             scheduler.schedule(this::automaticRebalance, REBALANCE_PERIOD, TimeUnit.MILLISECONDS);
@@ -256,7 +258,7 @@ public class Controller {
         dstoreSessions.values().forEach(session -> session.sendMessageToDstore(Protocol.LIST_TOKEN));
         try {
             if (!rebalanceLatch.await(TIMEOUT, TimeUnit.MILLISECONDS)) {
-                System.out.println("(X) WAITING FOR LIST FROM DSTORES: TIMEOUT");
+//                System.out.println("(X) WAITING FOR LIST FROM DSTORES: TIMEOUT");
                 copy = new HashMap<>(rebalanceFiles);
                 List<Integer> dstoresToRemove = new ArrayList<>();
                 dstoreSessions.keySet().forEach(port -> {
@@ -273,18 +275,18 @@ public class Controller {
                 copy = new HashMap<>(rebalanceFiles);
             }
             if (copy.size() < R) {
-                System.out.println("(X) REBALANCE_ERROR: DSTORES THAT SENT REPLIES < R");
+//                System.out.println("(X) REBALANCE_ERROR: DSTORES THAT SENT REPLIES < R");
                 return;
             }
             CountDownLatch waitForRebalance = new CountDownLatch(1);
             new Thread(new Rebalance(copy, this, waitForRebalance)).start();
             if (!waitForRebalance.await(TIMEOUT, TimeUnit.MILLISECONDS)) {
-                System.out.println("(X) REBALANCE ERROR: TIMEOUT REACHED WHILE REBALANCING");
+                System.out.println("(X) REBALANCE ERROR: TIMEOUT REACHED WHILE REBALANCE ALGORITHM WAS RUNNING, REBALANCE WILL NOT TAKE PLACE");
             } else {
                 rebalanceCompleteLatch = new CountDownLatch(rebalceResult.size());
                 index.updateIndex();
-                index.print();
-                System.out.println("(i) INDEX CONFIRMATION: INDEX UPDATE FINISHED");
+//                index.print();
+//                System.out.println("(i) INDEX CONFIRMATION: INDEX UPDATE FINISHED");
                 Thread t = new Thread(() -> {
                     try {
                         if (!rebalanceCompleteLatch.await(TIMEOUT, TimeUnit.MILLISECONDS)) {
@@ -366,7 +368,7 @@ public class Controller {
                 return;
             }
         }
-        System.out.println("(i) STORE -> NO REBALANCE SHOULD BE HAPPENING");
+//        System.out.println("(i) STORE -> NO REBALANCE SHOULD BE HAPPENING");
 
 //      synchronized (filenameKeys.computeIfAbsent(filename, k -> new Object())) {
         List<ControllerDstoreSession> list = null;
@@ -392,11 +394,11 @@ public class Controller {
         if (!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)) {
             System.out.println("(X) Waiting for STORE_ACKS: TIMEOUT REACHED");
             waitingStoreAcks.remove(filename);
-            System.out.println("(i) REBALANCE CAN START");
+//            System.out.println("(i) REBALANCE CAN START");
             index.removeFile(filename);
         } else {
             waitingStoreAcks.remove(filename);
-            System.out.println("(i) REBALANCE CAN START");
+//            System.out.println("(i) REBALANCE CAN START");
             index.setStoreComplete(filename);
             session.send(Protocol.STORE_COMPLETE_TOKEN);
         }

@@ -7,7 +7,7 @@ public class ClientMain {
 	public static void main(String[] args) throws Exception{
 
 		final int cport = 4444;
-		int timeout = 1000;
+		int timeout = 500;
 
 		File downloadFolder = new File("downloads");
 		if (!downloadFolder.exists())
@@ -23,8 +23,8 @@ public class ClientMain {
 		for (int i = 0; i < 30; i++) {
 			new Thread() {
 				public void run() {
-					test2Client(cport, timeout, downloadFolder, uploadFolder);
-//					testClient(cport, timeout, downloadFolder);
+//					test2Client(cport, timeout, downloadFolder, uploadFolder);
+					testClient(cport, timeout, downloadFolder);
 				}
 			}.start();
 		}
@@ -124,11 +124,17 @@ public class ClientMain {
 
 			try { list(client); } catch(IOException e) { e.printStackTrace(); }
 
-//			try { client.store(new File("a.txt")); } catch(IOException e) { e.printStackTrace(); }
-
-//			try { client.store(new File("catto.jpg")); } catch(IOException e) { e.printStackTrace(); }
-
-			try { client.store(new File("doggo.jpg")); } catch(IOException e) { e.printStackTrace(); }
+			try { client.store(new File("1.cql")); } catch(IOException e) { e.printStackTrace(); }
+			try { client.store(new File("2.cql")); } catch(IOException e) { e.printStackTrace(); }
+			try { client.store(new File("3.cql")); } catch(IOException e) { e.printStackTrace(); }
+			try { client.store(new File("4.cql")); } catch(IOException e) { e.printStackTrace(); }
+			try { client.store(new File("5.cql")); } catch(IOException e) { e.printStackTrace(); }
+			try { client.store(new File("6.cql")); } catch(IOException e) { e.printStackTrace(); }
+			try { client.store(new File("7.cql")); } catch(IOException e) { e.printStackTrace(); }
+			try { client.store(new File("7.cql")); } catch(IOException e) { e.printStackTrace(); }
+			try { client.store(new File("8.cql")); } catch(IOException e) { e.printStackTrace(); }
+			try { client.store(new File("9.cql")); } catch(IOException e) { e.printStackTrace(); }
+			try { client.store(new File("10.cql")); } catch(IOException e) { e.printStackTrace(); }
 
 			String list[] = null;
 			try { list = list(client); } catch(IOException e) { e.printStackTrace(); }
@@ -137,12 +143,12 @@ public class ClientMain {
 				for (String filename : list)
 					try { client.load(filename, downloadFolder); } catch(IOException e) { e.printStackTrace(); }
 
-			/*if (list != null)
-				for (String filename : list)
-					try { client.remove(filename); } catch(IOException e) { e.printStackTrace(); }
-			try { client.remove(list[0]); } catch(IOException e) { e.printStackTrace(); }
+//			if (list != null)
+//				for (String filename : list)
+//					try { client.remove(filename); } catch(IOException e) { e.printStackTrace(); }
+//			try { client.remove(list[0]); } catch(IOException e) { e.printStackTrace(); }
 
-			try { list(client); } catch(IOException e) { e.printStackTrace(); }*/
+			try { list(client); } catch(IOException e) { e.printStackTrace(); }
 
 		} finally {
 			if (client != null)
