@@ -209,7 +209,7 @@ public class Index {
         synchronized (files) {
             for (IndexFile f : files.values()) {
                 if (f.inProgress()) {
-                    System.out.println(f.getName() + " IN PROGRESS");
+//                    System.out.println(f.getName() + " IN PROGRESS");
                     return false;
                 }
             }

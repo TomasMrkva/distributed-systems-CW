@@ -106,6 +106,7 @@ public class Controller {
                             int dstorePort = Integer.parseInt(lineSplit[1]);
                             new Thread(new ControllerDstoreSession(dstorePort, client, this, line)).start();
                         } else {
+//                            System.out.println("LINE " + line + "QUEUED");
                             clientQueue.add(new QueuedOperation(line, client, null));
                         }
                     }
@@ -120,6 +121,7 @@ public class Controller {
         while (true) {
             if (!clientQueue.isEmpty() && !rebalance.get()) {
                 QueuedOperation q = clientQueue.poll();
+//                System.out.println("POLLED FROM QUEUE");
                 if (q == null) {
                     continue;
                 } else if (q.getClientSession() == null) {
@@ -147,6 +149,7 @@ public class Controller {
                 System.out.println("(+) DSTORES: " + dstoreSessions.size());
                 rebalance(true);
             } else {
+//                System.out.println("QUEING DSTORE");
                 dstoreQueue.add(new QueuedOperation(dstorePort, session));
             }
         } else {
@@ -215,11 +218,14 @@ public class Controller {
     public void rebalance(boolean join) {
         synchronized (rebalanceLock) {
             System.out.println("(i) REBALANCE STARTING");
-            while (!index.readyToRebalance()) {}
+            while (!index.readyToRebalance()) {
+//                System.out.println("WAITING");
+            }
 //                try { Thread.sleep(10); }
 //                catch (InterruptedException e) {};
             System.out.println("(i) REBALANCE: FINISHED WAITING FOR ANY STORE/REMOVE");
             rebalanceAction();
+//            System.out.println("(i) CHECKING DSTORE QUEUE");
 //                System.out.println("(i) REBALANCE: FINISHED MAIN REBALANCE");
             while (!dstoreQueue.isEmpty()) {
                 QueuedOperation q = dstoreQueue.poll();
@@ -229,6 +235,7 @@ public class Controller {
                 rebalanceAction();
             }
             System.out.println("(i) REBALANCE: FINISHED");
+
             if (join) {
                 scheduler.shutdownNow();
                 System.out.println("JOIN: REMOVED SCHEDULED: " + scheduler.isTerminated());
@@ -379,10 +386,8 @@ public class Controller {
         }
         StringBuilder output = new StringBuilder(Protocol.STORE_TO_TOKEN);
         list.forEach(dstore -> output.append(" ").append(dstore.getDstorePort()));
-
         CountDownLatch latch = new CountDownLatch(R);
         waitingStoreAcks.put(filename, latch);
-
         session.send(output.toString());
         if (!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)) {
             System.out.println("(X) Waiting for STORE_ACKS: TIMEOUT REACHED");
