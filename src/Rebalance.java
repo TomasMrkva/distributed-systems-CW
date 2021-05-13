@@ -73,8 +73,8 @@ public class Rebalance implements Runnable {
 
     private void formatRemoveMessages() {
         filesToRemove.forEach( (port, msg) -> {
-            String[] removeFiles = msg.toString().split(" ");
-            msg.insert(0, removeFiles.length + " ");
+            String[] removeFiles = msg.toString().trim().split(" ");
+            msg.insert(0, removeFiles.length);
         });
     }
 
@@ -89,11 +89,11 @@ public class Rebalance implements Runnable {
                 destPorts.add(destPort);
                 map.put(filename, destPorts);
             }
-            StringBuilder newMsg = new StringBuilder(map.size() + " ");
+            StringBuilder newMsg = new StringBuilder(String.valueOf(map.size()));
             map.forEach((filename, ports) -> {
-                newMsg.append(filename).append(" ");
-                newMsg.append(ports.size()).append(" ");
-                ports.forEach( destPort -> newMsg.append(destPort).append(" "));
+                newMsg.append(" ").append(filename);
+                newMsg.append(" ").append(ports.size());
+                ports.forEach( destPort -> newMsg.append(" ").append(destPort));
             });
             filesToSend.put(port, newMsg);
         });
@@ -104,10 +104,12 @@ public class Rebalance implements Runnable {
         filesToSend.forEach( (port, strBuilder) -> {
             String[] msg = combinedMessages.getOrDefault(port,new String[2]);
             msg[0] = strBuilder.toString();
+            msg[1] = "0";
             combinedMessages.put(port,msg);
         });
         filesToRemove.forEach( (port, strBuilder) -> {
             String[] msg = combinedMessages.getOrDefault(port,new String[2]);
+            if(msg[0] == null) msg[0] = "0";
             msg[1] = strBuilder.toString();
             combinedMessages.put(port,msg);
         });
@@ -128,7 +130,7 @@ public class Rebalance implements Runnable {
 
     private void updateFilesToRemove(int port, String filename) {
         StringBuilder msg = filesToRemove.getOrDefault(port, new StringBuilder());
-        msg.append(filename).append(" ");    //saves the name of files to remove
+        msg.append(" ").append(filename);    //saves the name of files to remove
         filesToRemove.put(port, msg);
     }
 
@@ -154,7 +156,7 @@ public class Rebalance implements Runnable {
             dstoreFiles.put(port, files);   //updates the dstore after the removed file
 
             StringBuilder msg = filesToRemove.getOrDefault(port, new StringBuilder());
-            msg.append(filename).append(" ");    //saves the name of files to remove
+            msg.append(" ").append(filename);    //saves the name of files to remove
             filesToRemove.put(port, msg);
         }
     }
@@ -162,12 +164,10 @@ public class Rebalance implements Runnable {
     private void indexFilter() {
         List<String> filesToRemove = new ArrayList<>();
         List<String> indexFiles = new ArrayList<>();
-        Iterator<MyFile> it = index.getFiles().iterator();
-        while(it.hasNext()) {
-            MyFile file = it.next();
-            if(file.getOperation() == Index.Operation.REMOVE_COMPLETE || file.getOperation() == Index.Operation.REMOVE_IN_PROGRESS) {
+        for (IndexFile file : index.getFiles()) {
+            if (file.getOperation() == Index.Operation.REMOVE_COMPLETE || file.getOperation() == Index.Operation.REMOVE_IN_PROGRESS || file.getOperation() == null) {
                 filesToRemove.add(file.getName());
-                it.remove();
+//                it.remove();
             } else {
                 indexFiles.add(file.getName());
             }
@@ -176,11 +176,12 @@ public class Rebalance implements Runnable {
             if (!indexFiles.contains(filename)){
                 filesToRemove.add(filename);
             }
-//            else if (index.getFiles().stream().map(MyFile::getName).noneMatch(filename::equals)) {
+//            else if (index.getFiles().stream().map(IndexFile::getName).noneMatch(filename::equals)) {
 //                filesToRemove.add(filename);
 //            }
         });
         filesToRemove.forEach(this::removeFileEverywhere);
+        filesToRemove.forEach(index::removeFile);
     }
 
     private void extraFilesFilter() {
@@ -240,13 +241,19 @@ public class Rebalance implements Runnable {
 //            System.out.println(entry.getKey() + ":" + entry.getValue());
 //        });
 
+        Random ran = new Random();
         Set<Integer> usedDstores = new HashSet<>();
         sorted.forEach((filename, ports) -> {
             for (int i=0; i < ports.size(); i++) {
                 int currentPort = ports.get(i);
-                if (!usedDstores.contains(currentPort) || i == ports.size()-1) {
+                if (!usedDstores.contains(currentPort)) {
                     usedDstores.add(currentPort);
                     masterDstores.put(filename,currentPort);
+                    break;
+                } else if (i == ports.size()-1) {
+                    int randomPort = ports.get(ran.nextInt(ports.size()));
+                    usedDstores.add(randomPort);
+                    masterDstores.put(filename,randomPort);
                     break;
                 }
             }
@@ -366,8 +373,6 @@ public class Rebalance implements Runnable {
         if (!underLimitFiles.isEmpty()) {
             System.out.println("(i) Retrying to distribute files");
             fillUnderLimitFiles();
-        } else {
-            correctFilesSize.putAll(underLimitFiles);
         }
     }
 
@@ -411,5 +416,171 @@ public class Rebalance implements Runnable {
         });
     }
 
+//        private void printState() {
+//        System.out.println("[DSTORE FILES]");
+//        dstoreFiles.entrySet().forEach(entry -> {
+//            System.out.println(entry.getKey() + " " + entry.getValue());
+//        });
+//
+//        System.out.println("[FILES ALLOCATION]");
+//        filesAllocation.entrySet().forEach(entry -> {
+//            System.out.println(entry.getKey() + " " + entry.getValue());
+//        });
+//
+//        System.out.println("[DEFAULT DSTORES]");
+//        masterDstores.entrySet().forEach(entry -> {
+//            System.out.println(entry.getKey() + " " + entry.getValue());
+//        });
+//
+//        System.out.println("[FILES TO REMOVE]");
+//        filesToRemove.entrySet().forEach(entry -> {
+//            System.out.println(entry.getKey() + " " + Arrays.toString(entry.getValue().toString().split(" ")));
+//        });
+//
+//        System.out.println("[FILES TO SEND]");
+//        filesToSend.entrySet().forEach(entry -> {
+//            System.out.println(entry.getKey() + ":" + entry.getValue());
+//        });
+//
+//        System.out.println("[OVER-LIMIT FILES]");
+//        overLimitFiles.entrySet().forEach(entry -> {
+//            System.out.println(entry.getKey() + " " + entry.getValue());
+//        });
+//
+//        System.out.println("[UNDER-LIMIT FILES]");
+//        underLimitFiles.entrySet().forEach(entry -> {
+//            System.out.println(entry.getKey() + " " + entry.getValue());
+//        });
+//
+//        System.out.println("[CORRECT FILES]");
+//        correctFilesSize.entrySet().forEach(entry -> {
+//            System.out.println(entry.getKey() + " " + entry.getValue());
+//        });
+//    }
+//
+//
+//    public static void main(String[] args) {
+//        Index index = new Index(null);
+//        index.setStoreInProgress("a.txt", 1);
+//        index.setStoreComplete("a.txt");
+//        index.setStoreInProgress("b.txt", 1);
+//        index.setStoreComplete("b.txt");
+//        index.setStoreInProgress("c.txt", 1);
+//        index.setStoreComplete("c.txt");
+//        index.setStoreInProgress("d.txt", 1);
+//        index.setStoreComplete("d.txt");
+//        index.setStoreInProgress("e.txt", 1);
+//        index.setStoreComplete("e.txt");
+//        index.setStoreInProgress("f.txt", 1);
+//        index.setStoreComplete("f.txt");
+//        index.setStoreInProgress("g.txt", 1);
+//        index.setStoreComplete("g.txt");
+//        index.setStoreInProgress("h.txt", 1);
+//        index.setStoreComplete("h.txt");
+//        index.setStoreInProgress("i.txt", 1);
+//        index.setStoreComplete("i.txt");
+//        index.setStoreInProgress("j.txt", 1);
+//        index.setStoreComplete("j.txt");
+//        index.setStoreInProgress("k.txt", 1);
+//        index.setStoreComplete("k.txt");
+//        index.setStoreInProgress("l.txt", 1);
+//        index.setStoreComplete("l.txt");
+//        index.setStoreInProgress("m.txt", 1);
+//        index.setStoreComplete("m.txt");
+//
+////        index.setRemoveInProgress("a.txt");
+////        index.setRemoveComplete("a.txt");
+////        index.setRemoveInProgress("b.txt");
+//
+//        HashMap<Integer, ArrayList<String>> temp = new HashMap<>();
+////        a,b,c
+////        d,e
+////        a,b,c,d
+////        temp.put(10, new ArrayList<>(Arrays.asList("a.txt", "b.txt","e.txt")));
+////        temp.put(11, new ArrayList<>(Arrays.asList("c.txt","a.txt","d.txt")));
+////        temp.put(12, new ArrayList<>(Arrays.asList("b.txt","c.txt","e.txt","f.txt","d.txt")));
+////        temp.put(13, new ArrayList<>(Arrays.asList("d.txt")));
+////        temp.put(14, new ArrayList<>(Arrays.asList("e.txt","f.txt")));
+////        temp.put(15, new ArrayList<>(Arrays.asList("a.txt","b.txt","c.txt","d.txt","e.txt","f.txt","g.txt","h.txt","i.txt","j.txt","l.txt","m.txt")));
+////        temp.put(16, new ArrayList<>(Arrays.asList("z.txt","y.txt","x.txt","w.txt","u.txt","v.txt","ab.txt","OK.txt","GUYUS.txt","MATT.txt","AMOR.txt","HEMLO.txt")));
+//        temp.put(17, new ArrayList<>(Arrays.asList("a.txt","b.txt","c.txt")));
+//        temp.put(18, new ArrayList<>(Arrays.asList("d.txt","e.txt")));
+//        temp.put(106, new ArrayList<>(Arrays.asList("a.txt","b.txt","c.txt","d.txt")));
+////        temp.put(100, new ArrayList<>());
+////        temp.put(101, new ArrayList<>());
+////        temp.put(102, new ArrayList<>());
+////        temp.put(103, new ArrayList<>());
+////        temp.put(21, new ArrayList<>());
+////        temp.put(22, new ArrayList<>());
+////        temp.put(23, new ArrayList<>());
+////        temp.put(24, new ArrayList<>());
+////        temp.put(25, new ArrayList<>());
+////        temp.put(26, new ArrayList<>());
+////        temp.put(27, new ArrayList<>());
+////        temp.put(28, new ArrayList<>());
+////        temp.put(29, new ArrayList<>());
+////        temp.put(30, new ArrayList<>());
+////        temp.put(31, new ArrayList<>());
+////        temp.put(32, new ArrayList<>());
+////        temp.put(33, new ArrayList<>());
+////        temp.put(105, new ArrayList<>(Arrays.asList("b.txt","b.txt")));
+////        temp.put(10, new ArrayList<>(Arrays.asList("b.txt","c.txt","d.txt")));
+////        temp.put(11, new ArrayList<>(Arrays.asList("a.txt","b.txt","c.txt","d.txt","e.txt","f.txt","g.txt","h.txt","i.txt","j.txt","l.txt","m.txt")));
+//
+//        Rebalance rebalance = new Rebalance(temp,null, null);
+//
+//        System.out.println("***START***");
+//        rebalance.printState();
+//
+////        rebalance.indexFilter();
+////        for (MyFile m : rebalance.index.getFiles()) {
+////            System.out.println(m.getName() + " : " + m.getOperation() + " -> " + m.getDstores());
+////        }
+//        System.out.println("\n***AFTER INDEX FILTER***");
+//        rebalance.printState();
+//
+//        System.out.println("\n***AFTER EXTRA FILES FILTER***");
+//        rebalance.extraFilesFilter();
+//        rebalance.printState();
+//
+//        rebalance.computeLimit();
+//        System.out.println("\nCEIL: " + rebalance.ceil + "  FLOOR: " + rebalance.floor);
+//
+//        System.out.println("\n***AFTER DEFAULT DSTORES ***");
+//        rebalance.findDefaultDstores();
+//        rebalance.printState();
+//
+//
+//        System.out.println("\n***AFTER DIVIDING DSTORES***");
+//        rebalance.divideDstores();
+//        rebalance.printState();
+//
+//        System.out.println("\n***AFTER REPLICATING FILES***");
+//        rebalance.replicateFiles();
+//        rebalance.printState();
+//
+//
+//        System.out.println("\n***AFTER DISTRIBUTING DSTORES***");
+//        rebalance.distributeFiles();
+//        rebalance.printState();
+//
+//        System.out.println("\n***FORMATTED MESSAGES***");
+//
+//        rebalance.formatRemoveMessages();
+//        rebalance.formatAddMessages();
+//        rebalance.printState();
+//
+//        rebalance.constructCombinedMsg();
+//        System.out.println("\n***COMBINED MESSAGES***");
+//        rebalance.constructCombinedMsg();
+//        rebalance.constructCombinedMsg().entrySet().forEach(entry -> {
+//            String[] values = entry.getValue();
+//            System.out.println(String.join(" ", values));
+//
+//        });
+//
+//
+//
+//    }
 
 }

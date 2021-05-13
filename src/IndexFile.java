@@ -2,14 +2,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public class MyFile {
+public class IndexFile {
 
     private final String filename;
     private final int filesize;
     private Index.Operation operation;
     private final List<ControllerDstoreSession> dstores;
 
-    public MyFile(String filename, int filesize) {
+    public IndexFile(String filename, int filesize) {
         this.filename = filename;
         this.filesize = filesize;
         dstores = Collections.synchronizedList(new ArrayList<>());
@@ -18,6 +18,10 @@ public class MyFile {
 
     public String getName(){
         return filename;
+    }
+
+    public int getSize() {
+        return filesize;
     }
 
     public synchronized void setOperation(Index.Operation op) {
@@ -32,8 +36,7 @@ public class MyFile {
         return operation == Index.Operation.STORE_COMPLETE;
     }
 
-    public synchronized boolean canStore(){
-//        System.out.println(operation);
+    public synchronized boolean canStore() {
         return operation == null || operation == Index.Operation.REMOVE_COMPLETE;
     }
 
@@ -42,57 +45,26 @@ public class MyFile {
     }
 
     public synchronized boolean addDstore(ControllerDstoreSession controllerDstoreSession) {
-//        for (ControllerDstoreSession dstore : dstores) {
-//            if (dstore.getDstorePort() == controllerDstoreSession.getDstorePort()) {
-//                return true;
-//            }
-//        }
         return dstores.add(controllerDstoreSession);
     }
 
-    public synchronized boolean addDstores(List<ControllerDstoreSession> controllerDstoreSessions) {
-        dstores.clear();
-        dstores.addAll(controllerDstoreSessions);
-        return true;
-    }
-
-    public synchronized boolean removeDstore(ControllerDstoreSession controllerDstoreSession) {
-        return dstores.remove(controllerDstoreSession);
-    }
-
-    public List<ControllerDstoreSession> getDstores(){
-//        List<ControllerDstoreSession> returnList = new ArrayList<>();
-//        synchronized (dstores){
-//            for (ControllerDstoreSession cd : dstores) {
-//                boolean contains = returnList.stream().anyMatch(d -> d.getDstorePort() == cd.getDstorePort());
-//                if (!contains) returnList.add(cd);
-//            }
-//            return returnList;
-//        }
-        synchronized (dstores){
-            return dstores;
-        }
-    }
-
     public synchronized void setDstores(List<ControllerDstoreSession> newDstores){
-        synchronized (dstores){
-            dstores.clear();
-            dstores.addAll(newDstores);
-        }
+        dstores.clear();
+        dstores.addAll(newDstores);
     }
 
-    public int getSize() {
-        return filesize;
+    public synchronized List<ControllerDstoreSession> getDstores(){
+        return dstores;
     }
 
 //    @Override
 //    public boolean equals(Object o) {
 //        if (this == o) return true;
 //        if (o == null || getClass() != o.getClass()) return false;
-//        MyFile myFile = (MyFile) o;
+//        IndexFile myFile = (IndexFile) o;
 //        return filename.equals(myFile.getName());
 //    }
-
+//
 //    @Override
 //    public int hashCode() {
 //        return Objects.hash(filename);
@@ -100,7 +72,7 @@ public class MyFile {
 
     @Override
     public String toString() {
-        return "MyFile{" +
+        return "IndexFile{" +
                 "filename='" + filename + '\'' +
                 ", filesize=" + filesize +
                 ", operation=" + operation +

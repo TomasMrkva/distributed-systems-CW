@@ -1,4 +1,3 @@
-import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -11,12 +10,12 @@ public class Index {
         REMOVE_COMPLETE
     }
 
-    private final Set<MyFile> files;
+    private final Map<String, IndexFile> files;
     private final Controller controller;
     private final HashMap<String,List<ControllerDstoreSession>> indexUpdate;
 
     public Index(Controller controller) {
-        files = Collections.synchronizedSet(new HashSet<>());
+        files = Collections.synchronizedMap(new HashMap<>());
         this.controller = controller;
         this.indexUpdate = new HashMap<>();
     }
@@ -36,19 +35,21 @@ public class Index {
     }
 
     public void print() {
-        synchronized (files) {
-            for (MyFile f : files) {
-                System.out.println(f.getName() + " " + f.getSize() + " " + f.getOperation());
-                f.getDstores().forEach( d -> System.out.print(" " + d.getDstorePort()));
-            }
-        }
+//        synchronized (files) {
+//            files.forEach( (name, f) -> {
+//                System.out.print(f.getName() + " " + f.getSize() + " " + f.getOperation());
+//                f.getDstores().forEach( d -> System.out.print(" " + d.getDstorePort()));
+//                System.out.println();
+//            });
+//        }
     }
 
     public void updateIndex() {
         synchronized (files) {
-            Iterator<MyFile> it = files.iterator();
+            Iterator<Map.Entry<String, IndexFile>> it = files.entrySet().iterator();
             while (it.hasNext()) {
-                MyFile f = it.next();
+                Map.Entry<String, IndexFile> entry = it.next();
+                IndexFile f = entry.getValue();
                 List<ControllerDstoreSession> dstores = indexUpdate.get(f.getName());
                 if (dstores == null) {
                     it.remove();
@@ -64,51 +65,67 @@ public class Index {
 
     public boolean setStoreInProgress(String filename, int filesize){
         synchronized (files) {
-            for(MyFile f : files) {
-                if(f.getName().equals(filename)){
-                    System.out.println(f.getName() + " " + f.getOperation());
-                    if(!f.canStore()) return false;
-                }
+//            for(IndexFile f : files) {
+//                if(f.getName().equals(filename)){
+//                    System.out.println(f.getName() + " " + f.getOperation());
+//
+//                }
+//            }
+            IndexFile previous = files.get(filename);
+            if (previous != null) {
+                if (!previous.canStore())
+                    return false;
             }
-            MyFile f = new MyFile(filename,filesize);
-            f.setOperation(Operation.STORE_IN_PROGRESS);
-            files.add(f);
+            IndexFile updated = new IndexFile(filename,filesize);
+            updated.setOperation(Operation.STORE_IN_PROGRESS);
+            files.put(filename,updated);
             return true;
         }
     }
 
     public boolean setStoreComplete(String filename){
         synchronized (files){
-            for(MyFile f : files) {
-                if(f.getName().equals(filename)){
-                    f.setOperation(Operation.STORE_COMPLETE);
-                    return true;
-                }
+            IndexFile f = files.get(filename);
+            if (f == null) throw new AssertionError();
+            f.setOperation(Operation.STORE_COMPLETE);
+            return true;
+//            for(IndexFile f : files) {
+//                if(f.getName().equals(filename)){
+//                    f.setOperation(Operation.STORE_COMPLETE);
+//                    return true;
+//                }
             }
 //            return false;
-            throw new AssertionError();
-        }
+
     }
 
     public boolean setRemoveInProgress(String filename){
         synchronized (files){
-            for(MyFile f : files) {
-                if(f.getName().equals(filename)){
-                    if(!f.exists()) {
-                        return false;
-                    } else {
-                        f.setOperation(Operation.REMOVE_IN_PROGRESS);
-                        return true;
-                    }
+//            for(IndexFile f : files) {
+//                if(f.getName().equals(filename)){
+//                    if(!f.exists()) {
+//                        return false;
+//                    } else {
+//                        f.setOperation(Operation.REMOVE_IN_PROGRESS);
+//                        return true;
+//                    }
+//                }
+                IndexFile f = files.get(filename);
+                if (f == null) throw new AssertionError();
+                else if(!f.exists()) {
+                    return false;
+                } else {
+                    f.setOperation(Operation.REMOVE_IN_PROGRESS);
+                    return true;
                 }
             }
-            return false;
-        }
+//            return false;
+//        }
     }
 
 //    public boolean setRemoveComplete(String filename){
 //        synchronized (files){
-//            for(MyFile f : files) {
+//            for(IndexFile f : files) {
 //                if(f.getName().equals(filename)){
 //                    if(f.getOperation() == Operation.REMOVE_IN_PROGRESS) {
 //                        f.setOperation(Operation.REMOVE_COMPLETE);
@@ -124,41 +141,48 @@ public class Index {
 //        }
 //    }
 
-    public Set<MyFile> getFiles(){
+    public List<IndexFile> getFiles(){
         synchronized (files){
-           return files;
+           return new ArrayList<>(files.values());
         }
     }
 
     public boolean fileExists(String filename){
-        synchronized (files){
-            for (MyFile f : files){
-                if (f.getName().equals(filename)){
-                    return f.exists();
-                }
-            }
+        synchronized (files) {
+//            for (IndexFile f : files){
+//                if (f.getName().equals(filename)){
+//                    return f.exists();
+//                }
+//            }
+            IndexFile f = files.get(filename);
+            if (f == null) return false;
+            else return f.exists();
         }
-        return false;
+//        return false;
     }
 
     public void removeFile(String filename){
-        synchronized (files){
+//        synchronized (files){
+            files.remove(filename);
 //            System.out.println("FILESIZE BEFORE REMOVE:" + files.size());
-            files.removeIf( myFile -> myFile.getName().equals(filename) );
+//            files.removeIf( myFile -> myFile.getName().equals(filename) );
 //            System.out.println("FILESIZE AFTER REMOVE: " + files.size());
-        }
+//        }
     }
 
     public Integer getFileSize(String filename){
         synchronized (files){
-            for(MyFile f : files) {
-                if(f.getName().equals(filename)){
-                    return f.getSize();
-                }
+//            for(IndexFile f : files) {
+//                if(f.getName().equals(filename)){
+//                    return f.getSize();
+//                }
+                IndexFile f = files.get(filename);
+                if (f == null) throw new AssertionError();
+                else return f.getSize();
             }
-            throw new AssertionError();
+
 //            return null;
-        }
+//        }
     }
 
     /**
@@ -169,16 +193,13 @@ public class Index {
      */
     public List<ControllerDstoreSession> getDstores(String filename, boolean remove) {
         synchronized (files) {
-            for(MyFile f : files) {
-                if (f.getName().equals(filename)) {
-                    if (remove && f.getOperation() == Operation.REMOVE_IN_PROGRESS) {
-                        return f.getDstores();
-                    } else if (!remove && f.exists()) {
-                        return f.getDstores();
-                    } else {
-                        return null;
-                    }
-                }
+            IndexFile f = files.get(filename);
+            if (f == null) {
+                return null;
+            } else if (remove && f.getOperation() == Operation.REMOVE_IN_PROGRESS) {
+                return f.getDstores();
+            } else if (!remove && f.exists()) {
+                return f.getDstores();
             }
             return null;
         }
@@ -186,27 +207,34 @@ public class Index {
 
     public boolean readyToRebalance() {
         synchronized (files) {
-            for (MyFile f : files){
+            for (IndexFile f : files.values()) {
                 if (f.inProgress()) {
                     System.out.println(f.getName() + " IN PROGRESS");
                     return false;
                 }
             }
+//            for (IndexFile f : files){
+//                if (f.inProgress()) {
+//                    System.out.println(f.getName() + " IN PROGRESS");
+//                    return false;
+//                }
+//            }
+            return true;
         }
-        return true;
     }
 
     public List<ControllerDstoreSession> getRDstores(int r){
         List<ControllerDstoreSession> dstores = new ArrayList<>();
         synchronized (files) {
-            files.forEach(myFile -> {
-                Operation op = myFile.getOperation();
+            files.forEach( (name, indexFile) -> {
+                Operation op = indexFile.getOperation();
                 if (op == null || op == Operation.STORE_IN_PROGRESS || op == Operation.STORE_COMPLETE) {
-                    dstores.addAll(myFile.getDstores());
+                    dstores.addAll(indexFile.getDstores());
                 }
             });
         }
-        dstores.addAll(new ArrayList<>(controller.dstoreSessions.values()));
+        try { dstores.addAll(new ArrayList<>(controller.dstoreSessions.values())); }
+        catch (NullPointerException e) { return null;}
         Collections.shuffle(dstores);
         Map<ControllerDstoreSession, Long> counts = dstores.stream().collect(Collectors.groupingBy(e -> e, Collectors.counting()));
         counts = counts.entrySet().stream()
@@ -218,9 +246,9 @@ public class Index {
         return result.stream().limit(r).collect(Collectors.toList());
     }
 
-//    public MyFile getFile(String filename) {
+//    public IndexFile getFile(String filename) {
 //        synchronized (files) {
-//            for (MyFile f : files){
+//            for (IndexFile f : files){
 //                if (f.getName().equals(filename))
 //                    return f;
 //            }
@@ -228,35 +256,42 @@ public class Index {
 //        return null;
 //    }
 
-    public boolean addDstore(String filename, ControllerDstoreSession dstore) {
-        synchronized (files){
-            for(MyFile f : files) {
-                if(f.getName().equals(filename)){
-                    f.addDstore(dstore);
-                    return true;
-                }
-            }
-            throw new AssertionError();
-//            return false;
-        }
-    }
-    public boolean addDstores(String filename, List<ControllerDstoreSession> dstores) {
-        synchronized (files){
+//    public boolean addDstore(String filename, ControllerDstoreSession dstore) {
+//        synchronized (files) {
+//            for(IndexFile f : files) {
+//                if(f.getName().equals(filename)){
+//                    f.addDstore(dstore);
+//                    return true;
+//                }
+//            }
+//            throw new AssertionError();
+////            return false;
+//        }
+//    }
+
+    public boolean setDstores(String filename, List<ControllerDstoreSession> dstores) {
+        synchronized (files) {
             dstores.removeIf(cd -> controller.dstoreSessions.get(cd.getDstorePort()) == null);
-            for(MyFile f : files) {
-                if(f.getName().equals(filename)){
-                    f.addDstores(dstores);
-                    return true;
-                }
+//            for(IndexFile f : files) {
+//                if(f.getName().equals(filename)){
+//                    f.addDstores(dstores);
+//                    return true;
+//                }
+//            }
+            IndexFile f = files.get(filename);
+            if (f == null) throw new AssertionError();
+            else {
+                f.setDstores(dstores);
+                return true;
             }
-            throw new AssertionError();
+
 //            return false;
         }
     }
 
 //    public boolean removeDstores(String filename, List<ControllerDstoreSession> dstores) {
 //        synchronized (files){
-//            for(MyFile f : files) {
+//            for(IndexFile f : files) {
 //                if(f.getName().equals(filename)){
 //                    f.getDstores().removeAll(dstores);
 //                    return true;
@@ -273,9 +308,9 @@ public class Index {
      */
     public void removeDstore(int dstorePort) {
         synchronized (files){
-            Iterator<MyFile> it = files.iterator();
+            Iterator<IndexFile> it = files.values().iterator();
             while(it.hasNext()){
-                MyFile f = it.next();
+                IndexFile f = it.next();
                 System.out.println("REMOVED DSTORES ? " + f.getDstores().removeIf(dstoreSession -> dstoreSession.getDstorePort() == dstorePort));
                 if(f.getDstores().isEmpty())
                     it.remove();
@@ -283,50 +318,65 @@ public class Index {
         }
     }
 
-    /**
-     * Removes the specified filename,dstore entry from the hashmap.
-     * This method is called when a user wanted to remove
-     * @param filename
-     * @param dstore
-     */
-    public void removeDstore(String filename, ControllerDstoreSession dstore){
-        synchronized (files){
-            Iterator<MyFile> it = files.iterator();
-            while(it.hasNext()){
-                MyFile f = it.next();
-                if(f.getName().equals(filename))
-                    f.removeDstore(dstore);
-                if(f.getDstores().isEmpty())
-                    it.remove();
-            }
-        }
-    }
+//    /**
+//     * Removes the specified filename,dstore entry from the hashmap.
+//     * This method is called when a user wanted to remove
+//     * @param filename
+//     * @param dstore
+//     */
+//    public void removeDstore(String filename, ControllerDstoreSession dstore){
+//        synchronized (files){
+//            Iterator<IndexFile> it = files.iterator();
+//            while(it.hasNext()){
+//                IndexFile f = it.next();
+//                if(f.getName().equals(filename))
+//                    f.removeDstore(dstore);
+//                if(f.getDstores().isEmpty())
+//                    it.remove();
+//            }
+//        }
+//    }
 
-    public static void main(String[] args) throws IOException {
-        ControllerDstoreSession c1 = new ControllerDstoreSession(1,null,null,null);
-        ControllerDstoreSession c2 = new ControllerDstoreSession(2,null,null,null);
-        ControllerDstoreSession c3 = new ControllerDstoreSession(3,null,null,null);
-        ControllerDstoreSession c4 = new ControllerDstoreSession(4,null,null,null);
-        ControllerDstoreSession c5 = new ControllerDstoreSession(5,null,null,null);
-        ControllerDstoreSession c6 = new ControllerDstoreSession(6,null,null,null);
-        MyFile m1 = new MyFile("m1",1);
-        MyFile m2 = new MyFile("m2",1);
-        MyFile m3 = new MyFile("m3",1);
-        MyFile m4 = new MyFile("m4",1);
-        MyFile m5 = new MyFile("m5",1);
-        MyFile m6 = new MyFile("m6",1);
-        m1.addDstore(c1); m1.addDstore(c2); m1.addDstore(c3); m1.addDstore(c4);
-        m2.addDstore(c1); m1.addDstore(c3);
-        m3.addDstore(c4); m3.addDstore(c4);
-        m4.addDstore(c5); m4.addDstore(c1);
-        m5.addDstore(c2); m5.addDstore(c5); m5.addDstore(c1);
-        Index index = new Index(null);
-        MyFile[] files = {m1,m2,m3,m4,m5,m6};
-        index.files.addAll(Arrays.asList(files));
-        System.out.println("Result:");
-        System.out.println(Arrays.toString(index.getRDstores(3).toArray()));
-
-    }
+//    public static void main(String[] args) throws IOException {
+//        ControllerDstoreSession c1 = new ControllerDstoreSession(1,null,null,null);
+//        ControllerDstoreSession c2 = new ControllerDstoreSession(2,null,null,null);
+//        ControllerDstoreSession c3 = new ControllerDstoreSession(3,null,null,null);
+//        ControllerDstoreSession c4 = new ControllerDstoreSession(4,null,null,null);
+//        ControllerDstoreSession c5 = new ControllerDstoreSession(5,null,null,null);
+//        ControllerDstoreSession c6 = new ControllerDstoreSession(6,null,null,null);
+//        IndexFile m1 = new IndexFile("m1",1);
+//        IndexFile m2 = new IndexFile("m2",1);
+//        IndexFile m3 = new IndexFile("m3",1);
+//        IndexFile m4 = new IndexFile("m4",1);
+//        IndexFile m5 = new IndexFile("m5",1);
+//        IndexFile m6 = new IndexFile("m6",1);
+//        m1.addDstore(c1); m1.addDstore(c2); m1.addDstore(c3); m1.addDstore(c4);
+//        m2.addDstore(c1); m2.addDstore(c3);
+//        m3.addDstore(c4); m3.addDstore(c4);
+//        m4.addDstore(c5); m4.addDstore(c1);
+//        m5.addDstore(c2); m5.addDstore(c5); m5.addDstore(c1);
+//        Index index = new Index(null);
+////        IndexFile[] files = {m1,m2,m3,m4,m5,m6};
+////        index.files.addAll(Arrays.asList(files));
+////        index.files.put("m1",m1);
+//        index.setStoreInProgress("m1",1);
+//        index.setStoreComplete("m1");
+//        index.files.put("m2",m2);
+//        index.files.put("m3",m3);
+//        index.files.put("m4",m4);
+//        index.files.put("m5",m5);
+//        index.files.put("m6",m6);
+//        System.out.println("Result:");
+//        index.print();
+//        index.setRemoveInProgress("m1");
+//        index.print();
+//        index.removeDstore(1);
+//        index.print();
+//        Map<Object,Object> map = Collections.synchronizedMap(new HashMap<>());
+//        System.out.println(map.values());
+////        System.out.println(Arrays.toString(index.getRDstores(3).toArray()));
+//
+//    }
 
 
 }

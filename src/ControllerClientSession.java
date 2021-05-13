@@ -28,9 +28,6 @@ public class ControllerClientSession extends Session {
         ControllerLogger.getInstance().messageSent(socket, message);
     }
 
-    private void recieveLog(String message){
-        ControllerLogger.getInstance().messageReceived(socket, message);
-    }
 
     public void singleOperation(String message) throws InterruptedException {
         ControllerLogger.getInstance().messageReceived(socket, message);
@@ -55,7 +52,7 @@ public class ControllerClientSession extends Session {
                     removeMessage(messageSplit);
             }
             case "LIST" -> listMessage(messageSplit);
-            default -> recieveLog("Malformed message: " + String.join(" ", messageSplit));
+            default -> System.out.println("Malformed message: " + message);
         }
     }
 

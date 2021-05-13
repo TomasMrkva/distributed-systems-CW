@@ -76,8 +76,6 @@ public class Controller {
     private final Object removeAcksLock = new Object();
     private final Object dstoresLock = new Object();
     private final Object storeAcksLock = new Object();
-//    public final ReentrantLock rebalanceLock = new ReentrantLock();
-//    public ConcurrentHashMap<String, Object> filenameKeys = new ConcurrentHashMap<>();
 
     public Controller(int cport, int r, int timeout, int rebalance_period) throws Exception {
         R = r;
@@ -87,8 +85,10 @@ public class Controller {
         index = new Index(this);
         ControllerLogger.init(Logger.LoggingType.ON_FILE_AND_TERMINAL);
         new Thread(this::processClientQueue).start();
-        scheduler = Executors.newSingleThreadScheduledExecutor();
-        scheduler.schedule(this::automaticRebalance, rebalance_period, TimeUnit.MILLISECONDS);
+        if (R > 1) {
+            scheduler = Executors.newSingleThreadScheduledExecutor();
+            scheduler.schedule(this::automaticRebalance, rebalance_period, TimeUnit.MILLISECONDS);
+        }
         run();
     }
 
@@ -137,23 +137,20 @@ public class Controller {
                     }
                 }
             }
-//            else if (rebalance.get()) {
-//                System.out.print("\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b\b"
-//                        + "(i) WAITING FOR REBALANCE TO FINISH...");
-//                System.out.println("(i) WAITING FOR REBALANCE TO FINISH...");
-//            }
-//            try { Thread.sleep(10); }
-//            catch (InterruptedException e) { e.printStackTrace(); }
         }
     }
 
     public void joinOperation(int dstorePort, ControllerDstoreSession session) {
-        if (rebalance.compareAndSet(false, true)) {
-            dstoreSessions.put(dstorePort, session);
-            System.out.println("(+) DSTORES: " + dstoreSessions.size());
-            rebalance(true);
+        if (R > 1) {
+            if (rebalance.compareAndSet(false, true)) {
+                dstoreSessions.put(dstorePort, session);
+                System.out.println("(+) DSTORES: " + dstoreSessions.size());
+                rebalance(true);
+            } else {
+                dstoreQueue.add(new QueuedOperation(dstorePort, session));
+            }
         } else {
-            dstoreQueue.add(new QueuedOperation(dstorePort, session));
+            dstoreSessions.put(dstorePort, session);
         }
     }
 
@@ -218,9 +215,9 @@ public class Controller {
     public void rebalance(boolean join) {
         synchronized (rebalanceLock) {
             System.out.println("(i) REBALANCE STARTING");
-            while (!index.readyToRebalance()) {
-                System.out.println("WAITING");
-            }
+            while (!index.readyToRebalance()) {}
+//                try { Thread.sleep(10); }
+//                catch (InterruptedException e) {};
             System.out.println("(i) REBALANCE: FINISHED WAITING FOR ANY STORE/REMOVE");
             rebalanceAction();
 //                System.out.println("(i) REBALANCE: FINISHED MAIN REBALANCE");
@@ -272,14 +269,14 @@ public class Controller {
                 System.out.println("(X) REBALANCE_ERROR: DSTORES THAT SENT REPLIES < R");
                 return;
             }
-
             CountDownLatch waitForRebalance = new CountDownLatch(1);
             new Thread(new Rebalance(copy, this, waitForRebalance)).start();
             if (!waitForRebalance.await(TIMEOUT, TimeUnit.MILLISECONDS)) {
                 System.out.println("(X) REBALANCE ERROR: TIMEOUT REACHED WHILE REBALANCING");
             } else {
                 rebalanceCompleteLatch = new CountDownLatch(rebalceResult.size());
-                index.updateIndex(); index.print();
+                index.updateIndex();
+                index.print();
                 System.out.println("(i) INDEX CONFIRMATION: INDEX UPDATE FINISHED");
                 Thread t = new Thread(() -> {
                     try {
@@ -293,8 +290,8 @@ public class Controller {
                 t.start();
                 rebalceResult.forEach((port, str) -> {
                     ControllerDstoreSession session = dstoreSessions.get(port);
-                    if (session != null) {
-                        session.sendMessageToDstore(Protocol.REBALANCE_TOKEN + " " + ((str != null) ? String.join(" ", str) : null));
+                    if (session != null && str != null) {
+                        session.sendMessageToDstore(Protocol.REBALANCE_TOKEN + " " + String.join(" ", str));
                     }
                 });
                 t.join();
@@ -325,9 +322,11 @@ public class Controller {
             session.send(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN);
             return;
         }
-        dstores.forEach(dstoreSession -> dstoreSession.sendMessageToDstore("REMOVE " + filename));
+
         CountDownLatch latch = new CountDownLatch(R);
         waitingRemoveAcks.put(filename, latch);
+
+        new Thread ( () -> dstores.forEach(dstoreSession -> dstoreSession.sendMessageToDstore("REMOVE " + filename))).start();
         if (!latch.await(TIMEOUT, TimeUnit.MILLISECONDS)) {
             System.out.println("(X) Waiting for REMOVE_ACKS: TIMEOUT REACHED");
         }
@@ -343,8 +342,8 @@ public class Controller {
             session.send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
         } else {
             StringBuilder output = new StringBuilder(Protocol.LIST_TOKEN);
-            List<MyFile> files = new ArrayList<>(index.getFiles());
-            for (MyFile f : files) {
+            List<IndexFile> files = new ArrayList<>(index.getFiles());
+            for (IndexFile f : files) {
                 if (f.exists())
                     output.append(" ").append(f.getName());
             }
@@ -363,13 +362,19 @@ public class Controller {
         System.out.println("(i) STORE -> NO REBALANCE SHOULD BE HAPPENING");
 
 //      synchronized (filenameKeys.computeIfAbsent(filename, k -> new Object())) {
-        List<ControllerDstoreSession> list;
+        List<ControllerDstoreSession> list = null;
         synchronized (storeLock) {
-            list = new ArrayList<>(index.getRDstores(R));
-            index.addDstores(filename, list);
+            try { list = new ArrayList<>(index.getRDstores(R)); }
+            catch (NullPointerException e) {
+                session.send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
+                index.removeFile(filename);
+                return;
+            }
+            index.setDstores(filename, list);
         }
         if (list.size() < R) {
             session.send(Protocol.ERROR_NOT_ENOUGH_DSTORES_TOKEN);
+            index.removeFile(filename);
             return;
         }
         StringBuilder output = new StringBuilder(Protocol.STORE_TO_TOKEN);

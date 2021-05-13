@@ -23,20 +23,22 @@ public class Dstore {
 
     final public int TIMEOUT;
     final public String FILE_FOLDER;
-    final public Socket CSOCKET;
+    final private Socket CSOCKET;
     final private ServerSocket DSOCKET;
     final public ConcurrentHashMap<String, FileRecord> files;
+    final private PrintWriter out;
 
     public Dstore(int dPort, int cPort, int timeout, String file_folder) throws IOException {
         TIMEOUT = timeout;
         FILE_FOLDER = file_folder;
         CSOCKET = new Socket("localhost", cPort);
+        out = new PrintWriter(CSOCKET.getOutputStream());
         DSOCKET = new ServerSocket(dPort);
         files = new ConcurrentHashMap<>();
         DstoreLogger.init(Logger.LoggingType.ON_FILE_AND_TERMINAL, dPort);
         setup(new File(file_folder));
         controllerCommunication();
-        send("JOIN " + dPort, CSOCKET);
+        sendToController("JOIN " + dPort);
         run();
     }
 
@@ -53,11 +55,16 @@ public class Dstore {
         }
     }
 
-    public void send(String message, Socket socket) throws IOException {
-        PrintWriter out = new PrintWriter(socket.getOutputStream());
+    public void send(String message, Socket socket, PrintWriter out) throws IOException {
         out.println(message);
         out.flush();
         DstoreLogger.getInstance().messageSent(socket, message);
+    }
+
+    public void sendToController(String message) {
+        out.println(message);
+        out.flush();
+        DstoreLogger.getInstance().messageSent(CSOCKET, message);
     }
 
 // Controller DSTORE messages
@@ -71,10 +78,22 @@ public class Dstore {
                     DstoreLogger.getInstance().messageReceived(CSOCKET, line);
                     String[] lineSplit = line.split(" ");
                     switch (lineSplit[0]) {
-                        case "REMOVE" -> removeFile(lineSplit);
-                        case "LIST" -> list();
-                        case "REBALANCE" -> new DstoreRebalance(this).rebalance(line.split("\\s+"));
-                        default -> System.out.println("Unrecognised command for DSTORE: [" + line + "] ");
+                        case "REMOVE" -> {
+                            if (lineSplit.length == 2) {
+                                removeFile(lineSplit);
+                            } else {
+                                System.out.println("Malformed REMOVE message: " + line);
+                            }
+                        }
+                        case "LIST" -> {
+                            if (lineSplit.length == 1) {
+                                list();
+                            } else {
+                                System.out.println("Malformed LIST message: " + line);
+                            }
+                        }
+                        case "REBALANCE" -> new DstoreRebalance(this).rebalance(line.split(" "));
+                        default -> System.out.println("Malformed message: " + line);
                     }
                 }
             } catch (IOException e) { e.printStackTrace();}
@@ -88,7 +107,7 @@ public class Dstore {
                 files.forEach((filename, fileRecord) -> fileList.append(" ").append(filename));
             }
         }
-        send(fileList.toString(), CSOCKET);
+        sendToController(fileList.toString());
     }
 
 // Client DSTORE messages
@@ -100,15 +119,16 @@ public class Dstore {
             new Thread( () -> {
                 try {
                     BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream()));
+                    PrintWriter out = new PrintWriter(client.getOutputStream());
                     String line;
                     while ((line = in.readLine()) != null){
                         DstoreLogger.getInstance().messageReceived(client, line);
                         String[] lineSplit = line.split(" ");
                         switch (lineSplit[0]) {
-                            case "STORE" -> store(lineSplit, client, false);
+                            case "STORE" -> store(lineSplit, client, false, out);
                             case "LOAD_DATA" -> loadData(lineSplit, client);
-                            case "REBALANCE_STORE" -> store(lineSplit, client, true);
-                            default -> System.out.println("Unrecognised command for DSTORE: " + line);
+                            case "REBALANCE_STORE" -> store(lineSplit, client, true, out);
+                            default -> System.out.println("Malformed message: " + line);
                         }
                     }
                 } catch (IOException e) {
@@ -128,20 +148,20 @@ public class Dstore {
         return true;
     }
 
-    private void store(String[] lineSplit, Socket client, boolean rebalance) throws IOException {
-        if (!isStoreMessageCorrect(lineSplit)) return;
+    private void store(String[] lineSplit, Socket client, boolean rebalance, PrintWriter out) throws IOException {
+        if (!isStoreMessageCorrect(lineSplit))
+            return;
         FileRecord f = files.get(lineSplit[1]);
-        if (f == null) {        //file does not exist yet
-            send(Protocol.ACK_TOKEN, client);
-            if(!storeAction(client, lineSplit[1], Integer.parseInt(lineSplit[2]))) {
+        if (f == null) {        //file does not exist yet, should always be true
+            send(Protocol.ACK_TOKEN, client, out);
+            if (!storeAction(client, lineSplit[1], Integer.parseInt(lineSplit[2]))) {
                 return;
             }
-        } else {
-            System.out.println("(X) File already exists, closing socket...");
-            client.close();
+        } else if (rebalance) {
+            System.out.println("(X) DSTORE ERROR: File already exists");
         }
         if (!rebalance)
-            send(Protocol.STORE_ACK_TOKEN + " " + lineSplit[1], CSOCKET);
+            sendToController(Protocol.STORE_ACK_TOKEN + " " + lineSplit[1]);
         else {
             client.close();
         }
@@ -154,7 +174,7 @@ public class Dstore {
         };
         ExecutorService executor = Executors.newFixedThreadPool(1);
         FileRecord file = new FileRecord(filename, filesize);
-        try (OutputStream outf = new FileOutputStream(file)){
+        try (OutputStream outf = new FileOutputStream(file)) {
             Future<byte[]> future = executor.submit(task);
             byte[] bytes = future.get(TIMEOUT, TimeUnit.MILLISECONDS);
             if (bytes.length == 0) {
@@ -192,8 +212,8 @@ public class Dstore {
             client.close();
         } else {
             File file = new File(FILE_FOLDER + "/" + filename);
-            System.out.println(file.exists());
-            System.out.println(file.length());
+//            System.out.println(file.exists());
+//            System.out.println(file.length());
             InputStream inf = new FileInputStream(file);
             OutputStream outf = client.getOutputStream();
             byte[] bytes = inf.readNBytes(f.getFilesize());
@@ -217,7 +237,7 @@ public class Dstore {
         String filename = lineSplit[1];
         FileRecord removed = files.remove(filename);
         if (removed == null) {
-            send(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN + " " + filename, CSOCKET);
+            sendToController(Protocol.ERROR_FILE_DOES_NOT_EXIST_TOKEN + " " + filename);
             return;
         }
         File file = new File(FILE_FOLDER + "/" + filename);
@@ -225,7 +245,7 @@ public class Dstore {
             System.out.println("(i) REMOVE CONFIRMATION: File removed successfully");
         else
             System.out.println("(X) REMOVE ERROR: Failed to remove a file");
-        send(Protocol.REMOVE_ACK_TOKEN + " " + filename, CSOCKET);
+        sendToController(Protocol.REMOVE_ACK_TOKEN + " " + filename);
     }
 
     //java Controller cport R timeout rebalance_period

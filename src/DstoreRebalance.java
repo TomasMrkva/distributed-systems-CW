@@ -38,7 +38,7 @@ public class DstoreRebalance {
                 System.out.println("DELETING: " + f.getName() + " " + deleted);
             }
         }
-        dstore.send(Protocol.REBALANCE_COMPLETE_TOKEN, dstore.CSOCKET);
+        dstore.sendToController(Protocol.REBALANCE_COMPLETE_TOKEN);
     }
 
     private void rebalanceSend(CountDownLatch latch) {
@@ -46,12 +46,14 @@ public class DstoreRebalance {
             for (int port : dstores) {
                 try {
                     Socket socket = new Socket("localhost", port);
+                    PrintWriter out = new PrintWriter(socket.getOutputStream());
                     System.out.println("CREATED A SOCKET PORT: " + port);
                     new Thread( () -> {
                         try { sendRebalanceFile(socket, filename, latch); }
                         catch (IOException e) { e.printStackTrace();}
                     }).start();
-                    dstore.send(Protocol.REBALANCE_STORE_TOKEN + " " + filename + " " + dstore.files.get(filename).getFilesize(), socket);
+                    String message = Protocol.REBALANCE_STORE_TOKEN + " " + filename + " " + dstore.files.get(filename).getFilesize();
+                    dstore.send(message, socket, out);
 //                    new Thread( () -> {
 //                        try {
 //                            send(Protocol.REBALANCE_STORE_TOKEN + " " + filename + " " + getFile(filename).getFilesize(), socket);
@@ -70,29 +72,33 @@ public class DstoreRebalance {
         String line;
         try {
             line = in.readLine();
-            System.out.println(line);
+            DstoreLogger.getInstance().messageReceived(socket, line);
+//            System.out.println(line);
         } catch (Exception e) {
             e.printStackTrace();
             latch.countDown();
+            in.close();
             return;
-        } if (line == null) {
+        }
+        if (line == null) {
             throw new AssertionError("(!!!) LINE TO READ WAS NULL");
         }
         socket.shutdownInput();
         if(!line.equals(Protocol.ACK_TOKEN)) {
-//            latch.countDown();
-            throw new AssertionError("(!!!) LINE TO READ WAS NULL");
+            System.out.println("Malformed ACK message: " + line);
+            in.close();
+//            throw new AssertionError("(!!!) LINE TO READ WAS NOT CORRECT");
         } else {
             InputStream inf;
             OutputStream outf = socket.getOutputStream();
             try {
-                System.out.println("HERE");
                 File file = new File(dstore.FILE_FOLDER + "/" + filename);
                 System.out.println(file.getName());
                 inf = new FileInputStream(file);
             } catch (FileNotFoundException e) {
                 e.printStackTrace();
                 latch.countDown();
+                in.close();
                 return;
             }
             byte[] bytes = inf.readNBytes(dstore.files.get(filename).getFilesize());
@@ -107,11 +113,12 @@ public class DstoreRebalance {
 
     private void parseRemove(String[] msg) {
         filesToRemove = new ArrayList<>();
+        if (msg == null) return;
         int numberToRemove;
         try { numberToRemove = Integer.parseInt(msg[0]); }
         catch (NumberFormatException e) { return; }
-        for (int i = 1; i <= numberToRemove; i++) {
-            filesToRemove.add(msg[i]);
+        for (int i = 0; i < numberToRemove; i++) {
+            filesToRemove.add(msg[i+1]);
         }
     }
 
@@ -137,7 +144,8 @@ public class DstoreRebalance {
             return Arrays.copyOfRange(lineSplit,j+1,lineSplit.length);
         } catch (NumberFormatException e) {
             filesToSend.clear();
-            return Arrays.copyOfRange(lineSplit,2,lineSplit.length);
+            System.out.println("Malformed REBALANCE message: REBALANCE " + String.join(" ",lineSplit));
+            return null;
         }
     }
 }

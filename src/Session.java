@@ -28,7 +28,8 @@ public abstract class Session implements Runnable {
                 singleOperation(line);
             }
         } catch (IOException | InterruptedException e){
-            System.out.println("(X) SESSION: SOMETHING WRONG HAPPENED: " + e.getMessage().toUpperCase());
+//            System.out.println("(X) SESSION: SOMETHING WRONG HAPPENED: " + e.getMessage().toUpperCase());
+            e.printStackTrace();
         } finally {
             try {
                 cleanup();
