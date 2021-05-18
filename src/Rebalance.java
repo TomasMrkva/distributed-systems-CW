@@ -150,14 +150,16 @@ public class Rebalance implements Runnable {
 
     private void removeFileEverywhere(String filename) {
         List<Integer> dstores = filesAllocation.remove(filename);
-        for (Integer port : dstores) {
-            ArrayList<String> files = new ArrayList<>(dstoreFiles.get(port));
-            files.remove(filename);
-            dstoreFiles.put(port, files);   //updates the dstore after the removed file
+        if (dstores != null) {
+            for (Integer port : dstores) {
+                ArrayList<String> files = new ArrayList<>(dstoreFiles.get(port));
+                files.remove(filename);
+                dstoreFiles.put(port, files);   //updates the dstore after the removed file
 
-            StringBuilder msg = filesToRemove.getOrDefault(port, new StringBuilder());
-            msg.append(" ").append(filename);    //saves the name of files to remove
-            filesToRemove.put(port, msg);
+                StringBuilder msg = filesToRemove.getOrDefault(port, new StringBuilder());
+                msg.append(" ").append(filename);    //saves the name of files to remove
+                filesToRemove.put(port, msg);
+            }
         }
     }
 
@@ -179,6 +181,11 @@ public class Rebalance implements Runnable {
 //            else if (index.getFiles().stream().map(IndexFile::getName).noneMatch(filename::equals)) {
 //                filesToRemove.add(filename);
 //            }
+        });
+        indexFiles.forEach( indexFileName -> {
+            if (!filesAllocation.containsKey(indexFileName)){
+                filesToRemove.add(indexFileName);
+            }
         });
         filesToRemove.forEach(this::removeFileEverywhere);
         filesToRemove.forEach(index::removeFile);
