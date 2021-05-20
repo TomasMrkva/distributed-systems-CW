@@ -23,8 +23,8 @@ public class ControllerDstoreSession extends Session {
     }
 
     public void sendMessageToDstore(String message){
-        ControllerLogger.getInstance().messageSent(dstoreSocket, message);
         out.println(message); out.flush();
+        ControllerLogger.getInstance().messageSent(dstoreSocket, message);
     }
 
     @Override
