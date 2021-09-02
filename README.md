@@ -1,1 +1,1 @@
-# distributed-systems-CW
+# University Coursework for Distributed Systems module
